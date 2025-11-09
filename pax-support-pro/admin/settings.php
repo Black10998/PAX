@@ -520,6 +520,12 @@ function pax_sup_render_settings() {
         if ( function_exists( 'pax_sup_updater' ) ) {
             pax_sup_updater()->maybe_schedule_checks();
         }
+        
+        // Clear update cache to ensure immediate detection of new releases
+        if ( function_exists( 'pax_sup_updater' ) ) {
+            pax_sup_updater()->clear_update_cache();
+        }
+        
         pax_sup_admin_notice( __( 'Settings saved.', 'pax-support-pro' ) );
     }
 

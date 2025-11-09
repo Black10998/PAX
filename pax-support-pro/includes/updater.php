@@ -51,7 +51,7 @@ class PAX_Support_Pro_Updater {
      */
     private function init_update_checker() {
         $this->update_checker = PucFactory::buildUpdateChecker(
-            'https://github.com/Black10998/Black10998/',
+            'https://github.com/Black10998/PAX/',
             PAX_SUP_FILE,
             'pax-support-pro'
         );
@@ -59,7 +59,10 @@ class PAX_Support_Pro_Updater {
         // Set branch to main
         $this->update_checker->setBranch( 'main' );
         
-        // Get VCS API and enable release assets
+        // Set subdirectory where plugin files are located
+        $this->update_checker->getVcsApi()->setSubdirectory( 'pax-support-pro' );
+        
+        // Enable release assets for updates
         $this->update_checker->getVcsApi()->enableReleaseAssets();
     }
     
@@ -225,16 +228,16 @@ class PAX_Support_Pro_Updater {
                 'last_check' => $this->update_checker->getLastCheckTime() ? date( 'Y-m-d H:i:s', $this->update_checker->getLastCheckTime() ) : 'Never',
             ),
             'github_connection' => array(
-                'repo'    => 'Black10998/Black10998',
+                'repo'    => 'Black10998/PAX',
                 'branch'  => 'main',
-                'api_url' => 'https://api.github.com/repos/Black10998/Black10998/releases/latest',
+                'api_url' => 'https://api.github.com/repos/Black10998/PAX/releases/latest',
             ),
             'current_version' => PAX_SUP_VER,
         );
         
         // Test GitHub connection
         $test_request = wp_remote_get(
-            'https://api.github.com/repos/Black10998/Black10998/releases/latest',
+            'https://api.github.com/repos/Black10998/PAX/releases/latest',
             array(
                 'timeout' => 10,
                 'headers' => array(
@@ -265,6 +268,24 @@ class PAX_Support_Pro_Updater {
     public function maybe_schedule_checks() {
         // plugin-update-checker handles scheduling automatically
         // This method is kept for backward compatibility
+    }
+    
+    /**
+     * Clear update transients and force check
+     * Called after settings save
+     */
+    public function clear_update_cache() {
+        // Clear WordPress update transients
+        delete_site_transient( 'update_plugins' );
+        delete_transient( 'pax_sup_update_cache' );
+        
+        // Clear PUC cache
+        if ( $this->update_checker ) {
+            $this->update_checker->resetUpdateState();
+            $this->update_checker->checkForUpdates();
+        }
+        
+        return true;
     }
 }
 

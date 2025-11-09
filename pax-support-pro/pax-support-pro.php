@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: PAX Support Pro
- * Plugin URI: https://github.com/Black10998/Black10998
+ * Plugin URI: https://github.com/Black10998/PAX
  * Description: Professional support ticket system with modern admin UI, real-time chat, AJAX-powered scheduler, and comprehensive callback management. Features include ChatGPT-style reactions, customizable welcome text, smooth animations, custom menus, and advanced analytics.
  * Version: 5.8.1
  * Requires at least: 5.0
@@ -10,7 +10,7 @@
  * Author URI: https://github.com/Black10998
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Update URI: https://github.com/Black10998/Black10998
+ * Update URI: https://github.com/Black10998/PAX
  * Text Domain: pax-support-pro
  * Domain Path: /languages
  * 
@@ -132,7 +132,7 @@ function pax_sup_welcome_notice() {
                     <a href="<?php echo esc_url( admin_url( 'admin.php?page=pax-support-settings' ) ); ?>" class="button button-primary">
                         <?php esc_html_e( 'Go to Settings', 'pax-support-pro' ); ?>
                     </a>
-                    <a href="https://github.com/Black10998/Black10998" target="_blank" rel="noopener noreferrer" class="button">
+                    <a href="https://github.com/Black10998/PAX" target="_blank" rel="noopener noreferrer" class="button">
                         <?php esc_html_e( 'View Documentation', 'pax-support-pro' ); ?>
                     </a>
                 </p>
