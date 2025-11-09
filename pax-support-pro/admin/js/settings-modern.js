@@ -23,6 +23,7 @@
         initMenuItemsSync();
         initPreviewHelp();
         initResetReactionsButton();
+        initCustomMenus();
     }
 
     /**
@@ -972,6 +973,125 @@
         }
     `;
     document.head.appendChild(style);
+    
+    /**
+     * Initialize Custom Menus
+     */
+    function initCustomMenus() {
+        const addBtn = document.getElementById('pax-add-custom-menu');
+        const menusList = document.getElementById('pax-custom-menus-list');
+        
+        if (!addBtn || !menusList) return;
+        
+        let menuIndex = menusList.querySelectorAll('.pax-custom-menu-item').length;
+        
+        // Add new menu item
+        addBtn.addEventListener('click', function() {
+            const newItem = document.createElement('div');
+            newItem.className = 'pax-custom-menu-item';
+            newItem.setAttribute('data-index', menuIndex);
+            newItem.innerHTML = `
+                <div class="pax-custom-menu-drag">
+                    <span class="dashicons dashicons-menu"></span>
+                </div>
+                <div class="pax-custom-menu-fields">
+                    <input type="text" 
+                           name="pax_chat_custom_menus[${menuIndex}][name]" 
+                           value="" 
+                           class="pax-text-input"
+                           placeholder="Menu Name"
+                           style="width: 200px; margin-right: 10px;">
+                    <input type="url" 
+                           name="pax_chat_custom_menus[${menuIndex}][url]" 
+                           value="" 
+                           class="pax-text-input"
+                           placeholder="https://example.com"
+                           style="flex: 1; margin-right: 10px;">
+                </div>
+                <label class="pax-toggle">
+                    <input type="checkbox" 
+                           name="pax_chat_custom_menus[${menuIndex}][enabled]" 
+                           value="1"
+                           checked>
+                    <span class="pax-toggle-slider"></span>
+                </label>
+                <button type="button" class="pax-btn-icon pax-remove-custom-menu" title="Remove">
+                    <span class="dashicons dashicons-trash"></span>
+                </button>
+            `;
+            
+            menusList.appendChild(newItem);
+            menuIndex++;
+            
+            // Attach remove handler
+            attachRemoveHandler(newItem.querySelector('.pax-remove-custom-menu'));
+        });
+        
+        // Remove menu item
+        function attachRemoveHandler(btn) {
+            if (!btn) return;
+            btn.addEventListener('click', function() {
+                const item = this.closest('.pax-custom-menu-item');
+                if (item) {
+                    item.style.opacity = '0';
+                    item.style.transform = 'translateX(-20px)';
+                    setTimeout(function() {
+                        item.remove();
+                    }, 200);
+                }
+            });
+        }
+        
+        // Attach to existing remove buttons
+        menusList.querySelectorAll('.pax-remove-custom-menu').forEach(attachRemoveHandler);
+        
+        // Make sortable (simple drag and drop)
+        let draggedItem = null;
+        
+        menusList.addEventListener('dragstart', function(e) {
+            if (e.target.closest('.pax-custom-menu-drag')) {
+                draggedItem = e.target.closest('.pax-custom-menu-item');
+                draggedItem.style.opacity = '0.5';
+            }
+        });
+        
+        menusList.addEventListener('dragend', function(e) {
+            if (draggedItem) {
+                draggedItem.style.opacity = '1';
+                draggedItem = null;
+            }
+        });
+        
+        menusList.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(menusList, e.clientY);
+            if (afterElement == null) {
+                menusList.appendChild(draggedItem);
+            } else {
+                menusList.insertBefore(draggedItem, afterElement);
+            }
+        });
+        
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.pax-custom-menu-item:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+        
+        // Make items draggable
+        menusList.querySelectorAll('.pax-custom-menu-item').forEach(item => {
+            item.setAttribute('draggable', 'true');
+        });
+    }
     
     /**
      * Initialize Reset Reactions Button

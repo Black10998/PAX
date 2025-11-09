@@ -31,7 +31,6 @@
   const menuBtn = document.getElementById('pax-head-more');
   const menu = document.getElementById('pax-head-menu');
   const offlineBadge = document.getElementById('pax-offline');
-  const speedLabel = document.getElementById('pax-speed-label');
   const suggestionsWrap = document.getElementById('pax-suggestions');
 
   const aiEndpoint = rest.ai || rest.chat;
@@ -467,21 +466,7 @@
     };
   })();
 
-  const speedKey = 'paxSpeedOn';
 
-  function setSpeed(on) {
-    document.documentElement.classList.toggle('pax-speed', !!on && !!opts.enable_speed);
-    try {
-      localStorage.setItem(speedKey, on ? '1' : '0');
-    } catch (err) {
-      // ignore storage errors
-    }
-    if (speedLabel) {
-      speedLabel.textContent = on ? strings.speedOn || 'Super Speed ON' : strings.speed || 'Super Speed';
-    }
-  }
-
-  setSpeed(localStorage.getItem(speedKey) === '1');
 
   function focusInput() {
     if (input) {
@@ -491,48 +476,72 @@
     }
   }
 
-  // Chat animation helper functions
+  // Chat animation helper functions with slide-from-bottom + subtle spin
   function openChatWithAnimation() {
     const animations = opts.chat_animations || {};
     const enabled = animations.enabled !== false;
     const duration = animations.duration || 300;
     const easing = animations.easing || 'ease';
     
-    if (enabled) {
+    // Check for prefers-reduced-motion
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    if (enabled && !prefersReducedMotion) {
+      // Add lifecycle class
+      chat.classList.add('is-opening');
+      
       // Set animation properties
       chat.style.transition = `all ${duration}ms ${easing}`;
+      chat.style.pointerEvents = 'none';
       if (chatOverlay) {
         chatOverlay.style.transition = `opacity ${duration}ms ${easing}`;
       }
       
-      // Add opening class for initial state
-      chat.classList.add('opening');
+      // Initial state: slide from bottom with subtle spin
       chat.style.opacity = '0';
-      chat.style.transform = 'scale(0.95) translateY(10px)';
+      chat.style.transform = 'translateY(24px) scale(0.98) rotate(-3deg)';
       
       // Trigger animation
       requestAnimationFrame(function() {
-        chat.classList.add('open');
-        chat.classList.remove('opening');
+        chat.classList.add('is-open');
         chat.style.opacity = '1';
-        chat.style.transform = 'scale(1) translateY(0)';
+        chat.style.transform = 'translateY(0) scale(1) rotate(0deg)';
         
         if (chatOverlay) {
           chatOverlay.classList.add('open');
         }
       });
       
-      // Clean up inline styles after animation
-      setTimeout(function() {
+      // Clean up after animation with fallback
+      const cleanup = function() {
+        chat.classList.remove('is-opening');
         chat.style.transition = '';
         chat.style.opacity = '';
         chat.style.transform = '';
+        chat.style.pointerEvents = '';
         if (chatOverlay) {
           chatOverlay.style.transition = '';
         }
-      }, duration);
+      };
+      
+      // Use transitionend with timeout fallback
+      let cleanupDone = false;
+      chat.addEventListener('transitionend', function handler() {
+        if (!cleanupDone) {
+          cleanupDone = true;
+          cleanup();
+          chat.removeEventListener('transitionend', handler);
+        }
+      });
+      
+      setTimeout(function() {
+        if (!cleanupDone) {
+          cleanupDone = true;
+          cleanup();
+        }
+      }, duration + 50);
     } else {
-      chat.classList.add('open');
+      chat.classList.add('is-open');
       if (chatOverlay) {
         chatOverlay.classList.add('open');
       }
@@ -547,33 +556,58 @@
     const duration = animations.duration || 300;
     const easing = animations.easing || 'ease';
     
-    if (enabled) {
+    // Check for prefers-reduced-motion
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    if (enabled && !prefersReducedMotion) {
+      // Add lifecycle class
+      chat.classList.add('is-closing');
+      
       // Set animation properties
       chat.style.transition = `all ${duration}ms ${easing}`;
+      chat.style.pointerEvents = 'none';
       if (chatOverlay) {
         chatOverlay.style.transition = `opacity ${duration}ms ${easing}`;
       }
       
-      // Trigger closing animation
+      // Trigger closing animation: slide down with subtle spin
       chat.style.opacity = '0';
-      chat.style.transform = 'scale(0.95) translateY(10px)';
+      chat.style.transform = 'translateY(24px) scale(0.98) rotate(-3deg)';
       
       if (chatOverlay) {
         chatOverlay.classList.remove('open');
       }
       
-      // Remove open class after animation
-      setTimeout(function() {
-        chat.classList.remove('open');
+      // Remove open class after animation with fallback
+      const cleanup = function() {
+        chat.classList.remove('is-open', 'is-closing');
         chat.style.transition = '';
         chat.style.opacity = '';
         chat.style.transform = '';
+        chat.style.pointerEvents = '';
         if (chatOverlay) {
           chatOverlay.style.transition = '';
         }
-      }, duration);
+      };
+      
+      // Use transitionend with timeout fallback
+      let cleanupDone = false;
+      chat.addEventListener('transitionend', function handler() {
+        if (!cleanupDone) {
+          cleanupDone = true;
+          cleanup();
+          chat.removeEventListener('transitionend', handler);
+        }
+      });
+      
+      setTimeout(function() {
+        if (!cleanupDone) {
+          cleanupDone = true;
+          cleanup();
+        }
+      }, duration + 50);
     } else {
-      chat.classList.remove('open');
+      chat.classList.remove('is-open');
       if (chatOverlay) {
         chatOverlay.classList.remove('open');
       }
@@ -650,18 +684,90 @@
     return null;
   }
 
-  // ========================= MENU BUTTON HANDLING =========================
+  // ========================= MENU BUTTON HANDLING WITH SLIDER ANIMATION =========================
 if (menuBtn && menu) {
+  let menuAnimating = false;
+  
+  function openMenuWithAnimation() {
+    if (menuAnimating) return;
+    menuAnimating = true;
+    
+    const animations = opts.chat_animations || {};
+    const enabled = animations.enabled !== false;
+    const duration = animations.duration || 300;
+    const easing = animations.easing || 'ease';
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    menu.style.display = 'flex';
+    
+    if (enabled && !prefersReducedMotion) {
+      // Determine slide direction based on text direction
+      const isRTL = document.dir === 'rtl' || document.documentElement.dir === 'rtl';
+      const slideFrom = isRTL ? 'translateX(100%)' : 'translateX(-100%)';
+      
+      menu.style.transition = `all ${duration}ms ${easing}`;
+      menu.style.transform = slideFrom;
+      menu.style.opacity = '0';
+      
+      requestAnimationFrame(function() {
+        menu.classList.add('open');
+        menu.style.transform = 'translateX(0) scale(1)';
+        menu.style.opacity = '1';
+      });
+      
+      setTimeout(function() {
+        menu.style.transition = '';
+        menu.style.transform = '';
+        menu.style.opacity = '';
+        menuAnimating = false;
+      }, duration + 50);
+    } else {
+      menu.classList.add('open');
+      menuAnimating = false;
+    }
+  }
+  
+  function closeMenuWithAnimation() {
+    if (menuAnimating) return;
+    menuAnimating = true;
+    
+    const animations = opts.chat_animations || {};
+    const enabled = animations.enabled !== false;
+    const duration = animations.duration || 300;
+    const easing = animations.easing || 'ease';
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    
+    if (enabled && !prefersReducedMotion) {
+      const isRTL = document.dir === 'rtl' || document.documentElement.dir === 'rtl';
+      const slideTo = isRTL ? 'translateX(100%)' : 'translateX(-100%)';
+      
+      menu.style.transition = `all ${duration}ms ${easing}`;
+      menu.style.transform = slideTo + ' scale(0.95)';
+      menu.style.opacity = '0';
+      
+      setTimeout(function() {
+        menu.classList.remove('open');
+        menu.style.display = 'none';
+        menu.style.transition = '';
+        menu.style.transform = '';
+        menu.style.opacity = '';
+        menuAnimating = false;
+      }, duration);
+    } else {
+      menu.classList.remove('open');
+      menu.style.display = 'none';
+      menuAnimating = false;
+    }
+  }
+  
   menuBtn.addEventListener('click', function (event) {
     event.preventDefault();
     event.stopPropagation();
     const isOpen = menu.classList.contains('open');
     if (isOpen) {
-      menu.classList.remove('open');
-      menu.style.display = 'none';
+      closeMenuWithAnimation();
     } else {
-      menu.classList.add('open');
-      menu.style.display = 'flex'; // ← يُظهر القائمة فعلياً
+      openMenuWithAnimation();
     }
   });
 
@@ -672,16 +778,14 @@ if (menuBtn && menu) {
       !menu.contains(event.target) &&
       !menuBtn.contains(event.target)
     ) {
-      menu.classList.remove('open');
-      menu.style.display = 'none'; // ← إخفاؤها عند الإغلاق
+      closeMenuWithAnimation();
     }
   }, true);
 
   // Close menu on ESC key
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && menu.classList.contains('open')) {
-      menu.classList.remove('open');
-      menu.style.display = 'none';
+      closeMenuWithAnimation();
     }
   });
 }
@@ -2103,7 +2207,11 @@ if (menuBtn && menu) {
         return;
       }
       const action = item.dataset.act;
-      menu.classList.remove('open');
+      if (typeof closeMenuWithAnimation === 'function') {
+        closeMenuWithAnimation();
+      } else {
+        menu.classList.remove('open');
+      }
       if (action === 'chat') {
         // Check chat access control
         const reason = shouldBlockChat();
@@ -2127,10 +2235,6 @@ if (menuBtn && menu) {
       }
       if (action === 'help') {
         openKnowledgeModal();
-      }
-      if (action === 'speed') {
-        const next = localStorage.getItem(speedKey) !== '1';
-        setSpeed(next);
       }
       if (action === 'agent') {
         agentModal.open();
@@ -2450,21 +2554,7 @@ if (menuBtn && menu) {
     }
   });
 
-  document.addEventListener('pax-toggle-speed', function() {
-    console.log('PAX-ASSETS: Received pax-toggle-speed event');
-    console.log('PAX-ASSETS: setSpeed type:', typeof setSpeed);
-    if (typeof setSpeed === 'function') {
-      const speedKey = 'pax-speed-mode';
-      const next = localStorage.getItem(speedKey) !== '1';
-      console.log('PAX-ASSETS: Calling setSpeed(' + next + ')');
-      setSpeed(next);
-      console.log('PAX-ASSETS: setSpeed() called successfully');
-    } else {
-      console.warn('PAX-ASSETS: setSpeed function not found');
-    }
-  });
-
-  console.log('PAX-ASSETS: All 8 event listeners registered successfully');
+  console.log('PAX-ASSETS: All event listeners registered successfully');
 
   // v5.4.9: Expose functions for debugging and direct fallback calls
   console.log('PAX-ASSETS: Initializing window.paxDebug object');
@@ -2475,8 +2565,7 @@ if (menuBtn && menu) {
     openScheduleModal: typeof openScheduleModal !== 'undefined' ? openScheduleModal : null,
     orderModal: typeof orderModal !== 'undefined' ? orderModal : null,
     openMyRequestModal: typeof openMyRequestModal !== 'undefined' ? openMyRequestModal : null,
-    feedbackModal: typeof feedbackModal !== 'undefined' ? feedbackModal : null,
-    setSpeed: typeof setSpeed !== 'undefined' ? setSpeed : null
+    feedbackModal: typeof feedbackModal !== 'undefined' ? feedbackModal : null
   };
   console.log('PAX-ASSETS: window.paxDebug initialized:', {
     openTicketModal: typeof window.paxDebug.openTicketModal,
@@ -2485,7 +2574,6 @@ if (menuBtn && menu) {
     openScheduleModal: typeof window.paxDebug.openScheduleModal,
     orderModal: typeof window.paxDebug.orderModal,
     openMyRequestModal: typeof window.paxDebug.openMyRequestModal,
-    feedbackModal: typeof window.paxDebug.feedbackModal,
-    setSpeed: typeof window.paxDebug.setSpeed
+    feedbackModal: typeof window.paxDebug.feedbackModal
   });
 })();

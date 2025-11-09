@@ -1013,9 +1013,25 @@
                     `;
                     itemCount++;
                 }
+                
+                // Add custom menus
+                const customMenus = window.paxSupportPro?.customMenus || [];
+                if (customMenus.length > 0) {
+                    for (const menu of customMenus) {
+                        if (menu.name && menu.url) {
+                            menuHTML += `
+                                <a href="${menu.url}" target="_blank" rel="noopener noreferrer" class="pax-menu-item pax-custom-menu-link">
+                                    <span class="dashicons dashicons-external"></span>
+                                    <span>${menu.name}</span>
+                                </a>
+                            `;
+                            itemCount++;
+                        }
+                    }
+                }
             }
 
-            console.log(`PAX-ACCESS: Created ${itemCount} menu items`);
+            console.log(`PAX-ACCESS: Created ${itemCount} menu items (including custom menus)`);
 
             menuDropdown.innerHTML = menuHTML;
             this.chatWindow.appendChild(menuDropdown);

@@ -450,7 +450,6 @@ function pax_sup_render_settings() {
             'disable_chat_menu'    => ! empty( $input['disable_chat_menu'] ) ? 1 : 0,
             'enable_ticket'        => ! empty( $input['enable_ticket'] ) ? 1 : 0,
             'enable_console'       => ! empty( $input['enable_console'] ) ? 1 : 0,
-            'enable_speed'         => ! empty( $input['enable_speed'] ) ? 1 : 0,
             'enable_offline_guard' => ! empty( $input['enable_offline_guard'] ) ? 1 : 0,
             'ai_assistant_enabled' => ! empty( $input['ai_assistant_enabled'] ) ? 1 : 0,
             'openai_enabled'       => ! empty( $input['openai_enabled'] ) ? 1 : 0,
@@ -484,7 +483,26 @@ function pax_sup_render_settings() {
             'backup_google_drive'    => ! empty( $input['backup_google_drive'] ) ? 1 : 0,
             'backup_dropbox'         => ! empty( $input['backup_dropbox'] ) ? 1 : 0,
             'chat_menu_items'        => $menu_items,
+            'pax_chat_custom_menus'  => isset( $input['pax_chat_custom_menus'] ) && is_array( $input['pax_chat_custom_menus'] ) 
+                ? array_map( function( $menu ) {
+                    return array(
+                        'name'    => sanitize_text_field( $menu['name'] ?? '' ),
+                        'url'     => esc_url_raw( $menu['url'] ?? '' ),
+                        'enabled' => ! empty( $menu['enabled'] ) ? 1 : 0,
+                    );
+                }, array_filter( $input['pax_chat_custom_menus'], function( $menu ) {
+                    return ! empty( $menu['name'] ) && ! empty( $menu['url'] );
+                } ) )
+                : array(),
             'welcome_message'        => sanitize_textarea_field( $input['welcome_message'] ?? '' ),
+            'welcome_placement'      => in_array( $input['welcome_placement'] ?? 'banner', array( 'banner', 'inline', 'bubble' ), true ) ? $input['welcome_placement'] : 'banner',
+            'welcome_alignment'      => in_array( $input['welcome_alignment'] ?? 'left', array( 'left', 'center', 'right' ), true ) ? $input['welcome_alignment'] : 'left',
+            'welcome_style'          => in_array( $input['welcome_style'] ?? 'subtle', array( 'subtle', 'accent', 'high-contrast' ), true ) ? $input['welcome_style'] : 'subtle',
+            'welcome_display_rule'   => in_array( $input['welcome_display_rule'] ?? 'always', array( 'always', 'first-session' ), true ) ? $input['welcome_display_rule'] : 'always',
+            'welcome_max_lines'      => max( 1, min( 10, intval( $input['welcome_max_lines'] ?? 3 ) ) ),
+            'welcome_show_icon'      => ! empty( $input['welcome_show_icon'] ) ? 1 : 0,
+            'welcome_animation'      => in_array( $input['welcome_animation'] ?? 'fade', array( 'none', 'fade', 'slide', 'typewriter' ), true ) ? $input['welcome_animation'] : 'fade',
+            'welcome_animation_duration' => max( 100, min( 1000, intval( $input['welcome_animation_duration'] ?? 300 ) ) ),
             'enable_reply_to'        => ! empty( $input['enable_reply_to'] ) ? 1 : 0,
             'enable_quick_actions'   => ! empty( $input['enable_quick_actions'] ) ? 1 : 0,
             // v5.3.0: Removed enable_customization (feature removed)
@@ -492,8 +510,6 @@ function pax_sup_render_settings() {
             'chat_reactions_enable_copy'    => ! empty( $input['chat_reactions_enable_copy'] ) ? 1 : 0,
             'chat_reactions_enable_like'    => ! empty( $input['chat_reactions_enable_like'] ) ? 1 : 0,
             'chat_reactions_enable_dislike' => ! empty( $input['chat_reactions_enable_dislike'] ) ? 1 : 0,
-            // Chat Customization
-            'chat_welcome_text'             => sanitize_textarea_field( $input['chat_welcome_text'] ?? '' ),
             // Chat Animations
             'chat_animations_enabled'       => ! empty( $input['chat_animations_enabled'] ) ? 1 : 0,
             'chat_animation_duration'       => max( 100, min( 1000, intval( $input['chat_animation_duration'] ?? 300 ) ) ),

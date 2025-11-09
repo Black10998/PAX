@@ -106,7 +106,6 @@ function pax_sup_enqueue_public_assets() {
         'chat'           => 'dashicons-format-chat',
         'ticket'         => 'dashicons-tickets-alt',
         'help'           => 'dashicons-editor-help',
-        'speed'          => 'dashicons-performance',
         'livechat'       => 'dashicons-businessman',
         'whatsnew'       => 'dashicons-megaphone',
         'troubleshooter' => 'dashicons-admin-tools',
@@ -120,7 +119,6 @@ function pax_sup_enqueue_public_assets() {
 
     $localize = array(
         'options' => array(
-            'enable_speed'         => ! empty( $options['enable_speed'] ),
             'toggle_on_click'      => ! empty( $options['toggle_on_click'] ),
             'enable_offline_guard' => ! empty( $options['enable_offline_guard'] ),
             'chat_access_control'  => $options['chat_access_control'] ?? 'everyone',
@@ -152,9 +150,25 @@ function pax_sup_enqueue_public_assets() {
                 'duration' => (int) ( $options['chat_animation_duration'] ?? 300 ),
                 'easing'   => $options['chat_animation_easing'] ?? 'ease',
             ),
+            // Welcome Message Settings
+            'welcome_settings'     => array(
+                'placement'  => $options['welcome_placement'] ?? 'banner',
+                'alignment'  => $options['welcome_alignment'] ?? 'left',
+                'style'      => $options['welcome_style'] ?? 'subtle',
+                'display_rule' => $options['welcome_display_rule'] ?? 'always',
+                'max_lines'  => (int) ( $options['welcome_max_lines'] ?? 3 ),
+                'show_icon'  => ! empty( $options['welcome_show_icon'] ?? 1 ),
+                'animation'  => $options['welcome_animation'] ?? 'fade',
+                'animation_duration' => (int) ( $options['welcome_animation_duration'] ?? 300 ),
+            ),
         ),
         'menuItems' => $menu_items,
         'menuIcons' => $menu_icons_map,
+        'customMenus' => isset( $options['pax_chat_custom_menus'] ) && is_array( $options['pax_chat_custom_menus'] )
+            ? array_values( array_filter( $options['pax_chat_custom_menus'], function( $menu ) {
+                return ! empty( $menu['enabled'] ) && ! empty( $menu['name'] ) && ! empty( $menu['url'] );
+            } ) )
+            : array(),
         'rest'    => array(
             'chat'     => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/chat' ) ),
             'ai'       => esc_url_raw( rest_url( 'pax-support/v1/ai-chat' ) ),
@@ -190,7 +204,7 @@ function pax_sup_enqueue_public_assets() {
             'feedback'  => esc_url( admin_url( 'admin.php?page=pax-support-feedback' ) ),
         ),
         'strings' => array(
-            'welcome' => ! empty( $options['chat_welcome_text'] ) ? $options['chat_welcome_text'] : __( '👋 Welcome! How can I help you today?', 'pax-support-pro' ),
+            'welcome' => ! empty( $options['welcome_message'] ) ? $options['welcome_message'] : __( '👋 Welcome! How can I help you today?', 'pax-support-pro' ),
             'loginRequired' => __( 'Please log in to use the chat system.', 'pax-support-pro' ),
             'comingSoon' => __( 'Coming soon!', 'pax-support-pro' ),
             'chatDisabled' => $options['chat_disabled_message'] ?? 'Chat is currently disabled. Please try again later.',

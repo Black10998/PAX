@@ -374,10 +374,100 @@ function pax_sup_render_modern_settings() {
                                 <label class="pax-form-label">
                                     <span class="dashicons dashicons-welcome-learn-more"></span>
                                     <?php esc_html_e( 'Welcome Message', 'pax-support-pro' ); ?>
-                                    <span class="pax-tooltip" data-tooltip="<?php esc_attr_e( 'Custom welcome message shown when chat opens for logged-in users', 'pax-support-pro' ); ?>">?</span>
+                                    <span class="pax-tooltip" data-tooltip="<?php esc_attr_e( 'Custom welcome message shown when chat opens', 'pax-support-pro' ); ?>">?</span>
                                 </label>
-                                <p class="pax-form-description"><?php esc_html_e( 'Customize the welcome message displayed when logged-in users open the chat. Leave empty to use default message.', 'pax-support-pro' ); ?></p>
-                                <textarea name="welcome_message" class="pax-text-input" rows="3" placeholder="<?php esc_attr_e( '👋 Welcome back! How can I help you today?', 'pax-support-pro' ); ?>" style="width: 100%; resize: vertical; font-family: inherit;"><?php echo esc_textarea( $options['welcome_message'] ?? '' ); ?></textarea>
+                                <p class="pax-form-description"><?php esc_html_e( 'Customize the welcome message displayed when users open the chat. Leave empty to use default message.', 'pax-support-pro' ); ?></p>
+                                <textarea name="welcome_message" class="pax-text-input" rows="3" placeholder="<?php esc_attr_e( '👋 Welcome! How can I help you today?', 'pax-support-pro' ); ?>" style="width: 100%; resize: vertical; font-family: inherit;"><?php echo esc_textarea( $options['welcome_message'] ?? '' ); ?></textarea>
+                                
+                                <!-- Welcome Message Controls -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                                    <!-- Placement -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Placement', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <select name="welcome_placement" class="pax-select" style="width: 100%;">
+                                            <option value="banner" <?php selected( $options['welcome_placement'] ?? 'banner', 'banner' ); ?>><?php esc_html_e( 'Banner', 'pax-support-pro' ); ?></option>
+                                            <option value="inline" <?php selected( $options['welcome_placement'] ?? 'banner', 'inline' ); ?>><?php esc_html_e( 'Inline', 'pax-support-pro' ); ?></option>
+                                            <option value="bubble" <?php selected( $options['welcome_placement'] ?? 'banner', 'bubble' ); ?>><?php esc_html_e( 'Bubble', 'pax-support-pro' ); ?></option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Alignment -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Alignment', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <select name="welcome_alignment" class="pax-select" style="width: 100%;">
+                                            <option value="left" <?php selected( $options['welcome_alignment'] ?? 'left', 'left' ); ?>><?php esc_html_e( 'Left', 'pax-support-pro' ); ?></option>
+                                            <option value="center" <?php selected( $options['welcome_alignment'] ?? 'left', 'center' ); ?>><?php esc_html_e( 'Center', 'pax-support-pro' ); ?></option>
+                                            <option value="right" <?php selected( $options['welcome_alignment'] ?? 'left', 'right' ); ?>><?php esc_html_e( 'Right', 'pax-support-pro' ); ?></option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Style -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Style', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <select name="welcome_style" class="pax-select" style="width: 100%;">
+                                            <option value="subtle" <?php selected( $options['welcome_style'] ?? 'subtle', 'subtle' ); ?>><?php esc_html_e( 'Subtle', 'pax-support-pro' ); ?></option>
+                                            <option value="accent" <?php selected( $options['welcome_style'] ?? 'subtle', 'accent' ); ?>><?php esc_html_e( 'Accent', 'pax-support-pro' ); ?></option>
+                                            <option value="high-contrast" <?php selected( $options['welcome_style'] ?? 'subtle', 'high-contrast' ); ?>><?php esc_html_e( 'High Contrast', 'pax-support-pro' ); ?></option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Display Rule -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Display Rule', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <select name="welcome_display_rule" class="pax-select" style="width: 100%;">
+                                            <option value="always" <?php selected( $options['welcome_display_rule'] ?? 'always', 'always' ); ?>><?php esc_html_e( 'Always', 'pax-support-pro' ); ?></option>
+                                            <option value="first-session" <?php selected( $options['welcome_display_rule'] ?? 'always', 'first-session' ); ?>><?php esc_html_e( 'First Session Only', 'pax-support-pro' ); ?></option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                                    <!-- Max Lines -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Max Lines', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <input type="number" name="welcome_max_lines" min="1" max="10" value="<?php echo esc_attr( $options['welcome_max_lines'] ?? 3 ); ?>" class="pax-text-input" style="width: 100%;">
+                                    </div>
+                                    
+                                    <!-- Show Icon -->
+                                    <div style="display: flex; align-items: center; padding-top: 20px;">
+                                        <label class="pax-toggle">
+                                            <input type="checkbox" name="welcome_show_icon" <?php checked( $options['welcome_show_icon'] ?? 1 ); ?>>
+                                            <span class="pax-toggle-slider"></span>
+                                        </label>
+                                        <span style="margin-left: 10px; font-size: 13px;"><?php esc_html_e( 'Show Icon/Emoji', 'pax-support-pro' ); ?></span>
+                                    </div>
+                                    
+                                    <!-- Animation Type -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Animation', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <select name="welcome_animation" class="pax-select" style="width: 100%;">
+                                            <option value="none" <?php selected( $options['welcome_animation'] ?? 'fade', 'none' ); ?>><?php esc_html_e( 'None', 'pax-support-pro' ); ?></option>
+                                            <option value="fade" <?php selected( $options['welcome_animation'] ?? 'fade', 'fade' ); ?>><?php esc_html_e( 'Fade', 'pax-support-pro' ); ?></option>
+                                            <option value="slide" <?php selected( $options['welcome_animation'] ?? 'fade', 'slide' ); ?>><?php esc_html_e( 'Slide', 'pax-support-pro' ); ?></option>
+                                            <option value="typewriter" <?php selected( $options['welcome_animation'] ?? 'fade', 'typewriter' ); ?>><?php esc_html_e( 'Typewriter', 'pax-support-pro' ); ?></option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Animation Duration -->
+                                    <div>
+                                        <label class="pax-form-label" style="font-size: 13px; margin-bottom: 5px;">
+                                            <?php esc_html_e( 'Animation Duration (ms)', 'pax-support-pro' ); ?>
+                                        </label>
+                                        <input type="number" name="welcome_animation_duration" min="100" max="1000" step="50" value="<?php echo esc_attr( $options['welcome_animation_duration'] ?? 300 ); ?>" class="pax-text-input" style="width: 100%;">
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Enable Reply-to-Message -->
@@ -602,26 +692,6 @@ function pax_sup_render_modern_settings() {
                         </div>
                     </div>
 
-                    <!-- Chat Customization Card -->
-                    <div class="pax-card">
-                        <div class="pax-card-header">
-                            <span class="dashicons dashicons-admin-customizer"></span>
-                            <h2><?php esc_html_e( 'Chat Customization', 'pax-support-pro' ); ?></h2>
-                        </div>
-                        <div class="pax-card-body">
-                            <!-- Welcome Text -->
-                            <div class="pax-form-group">
-                                <label class="pax-form-label">
-                                    <span class="dashicons dashicons-format-chat"></span>
-                                    <?php esc_html_e( 'Welcome Text', 'pax-support-pro' ); ?>
-                                    <span class="pax-tooltip" data-tooltip="<?php esc_attr_e( 'Custom welcome message shown when chat opens', 'pax-support-pro' ); ?>">?</span>
-                                </label>
-                                <p class="pax-form-description"><?php esc_html_e( 'Custom welcome message displayed when users open the chat. Leave empty for default message.', 'pax-support-pro' ); ?></p>
-                                <textarea name="chat_welcome_text" rows="3" class="pax-text-input" style="font-family: inherit; resize: vertical;"><?php echo esc_textarea( $options['chat_welcome_text'] ?? '' ); ?></textarea>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Chat Animations Card -->
                     <div class="pax-card">
                         <div class="pax-card-header">
@@ -805,7 +875,6 @@ function pax_sup_render_modern_settings() {
                                     'chat'          => 'dashicons-format-chat',
                                     'ticket'        => 'dashicons-tickets-alt',
                                     'help'          => 'dashicons-editor-help',
-                                    'speed'         => 'dashicons-performance',
                                     'agent'         => 'dashicons-admin-users',
                                     'whatsnew'      => 'dashicons-megaphone',
                                     'troubleshooter'=> 'dashicons-admin-tools',
@@ -845,6 +914,73 @@ function pax_sup_render_modern_settings() {
                                 </div>
                                 <?php endforeach; ?>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Menus -->
+                    <div class="pax-card">
+                        <div class="pax-card-header">
+                            <span class="dashicons dashicons-menu-alt"></span>
+                            <h2><?php esc_html_e( 'Custom Menus', 'pax-support-pro' ); ?></h2>
+                        </div>
+                        <div class="pax-card-body">
+                            <p class="pax-form-description" style="margin-bottom: 20px;">
+                                <?php esc_html_e( 'Add custom menu links that will appear in the chat widget. These will be rendered where legacy buttons were removed.', 'pax-support-pro' ); ?>
+                            </p>
+                            
+                            <div id="pax-custom-menus-list">
+                                <?php
+                                $custom_menus = isset( $options['pax_chat_custom_menus'] ) && is_array( $options['pax_chat_custom_menus'] )
+                                    ? $options['pax_chat_custom_menus']
+                                    : array();
+                                
+                                if ( empty( $custom_menus ) ) {
+                                    $custom_menus = array(
+                                        array( 'name' => '', 'url' => '', 'enabled' => 1 )
+                                    );
+                                }
+                                
+                                foreach ( $custom_menus as $index => $menu ) :
+                                    $name = isset( $menu['name'] ) ? $menu['name'] : '';
+                                    $url = isset( $menu['url'] ) ? $menu['url'] : '';
+                                    $enabled = isset( $menu['enabled'] ) ? $menu['enabled'] : 1;
+                                ?>
+                                <div class="pax-custom-menu-item" data-index="<?php echo esc_attr( $index ); ?>">
+                                    <div class="pax-custom-menu-drag">
+                                        <span class="dashicons dashicons-menu"></span>
+                                    </div>
+                                    <div class="pax-custom-menu-fields">
+                                        <input type="text" 
+                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][name]" 
+                                               value="<?php echo esc_attr( $name ); ?>" 
+                                               class="pax-text-input"
+                                               placeholder="<?php esc_attr_e( 'Menu Name', 'pax-support-pro' ); ?>"
+                                               style="width: 200px; margin-right: 10px;">
+                                        <input type="url" 
+                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][url]" 
+                                               value="<?php echo esc_attr( $url ); ?>" 
+                                               class="pax-text-input"
+                                               placeholder="<?php esc_attr_e( 'https://example.com', 'pax-support-pro' ); ?>"
+                                               style="flex: 1; margin-right: 10px;">
+                                    </div>
+                                    <label class="pax-toggle">
+                                        <input type="checkbox" 
+                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][enabled]" 
+                                               value="1"
+                                               <?php checked( $enabled ); ?>>
+                                        <span class="pax-toggle-slider"></span>
+                                    </label>
+                                    <button type="button" class="pax-btn-icon pax-remove-custom-menu" title="<?php esc_attr_e( 'Remove', 'pax-support-pro' ); ?>">
+                                        <span class="dashicons dashicons-trash"></span>
+                                    </button>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            
+                            <button type="button" id="pax-add-custom-menu" class="button button-secondary" style="margin-top: 15px;">
+                                <span class="dashicons dashicons-plus-alt" style="margin-top: 3px;"></span>
+                                <?php esc_html_e( 'Add Custom Menu', 'pax-support-pro' ); ?>
+                            </button>
                         </div>
                     </div>
 

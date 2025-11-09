@@ -18,7 +18,6 @@ function pax_sup_default_options() {
         'disable_chat_menu'    => 0,
         'enable_ticket'        => 1,
         'enable_console'       => 1,
-        'enable_speed'         => 1,
         'enable_offline_guard' => 1,
         'ai_assistant_enabled' => 1,
         'openai_enabled'       => 0,
@@ -45,6 +44,14 @@ function pax_sup_default_options() {
         'ticket_cooldown_days'   => 3,
         'scheduler_timezone'     => wp_timezone_string(),
         'welcome_message'        => '',
+        'welcome_placement'      => 'banner',
+        'welcome_alignment'      => 'left',
+        'welcome_style'          => 'subtle',
+        'welcome_display_rule'   => 'always',
+        'welcome_max_lines'      => 3,
+        'welcome_show_icon'      => 1,
+        'welcome_animation'      => 'fade',
+        'welcome_animation_duration' => 300,
         'enable_reply_to'        => 0,
         'enable_quick_actions'   => 1,
         'enable_customization'   => 0,
@@ -54,12 +61,11 @@ function pax_sup_default_options() {
         'backup_google_drive'    => 0,
         'backup_dropbox'         => 0,
         'chat_menu_items'        => pax_sup_default_menu_items(),
+        'pax_chat_custom_menus'  => array(),
         // Chat Reactions
         'chat_reactions_enable_copy'    => 1,
         'chat_reactions_enable_like'    => 1,
         'chat_reactions_enable_dislike' => 1,
-        // Chat Customization
-        'chat_welcome_text'             => '',
         // Chat Animations
         'chat_animations_enabled'       => 1,
         'chat_animation_duration'       => 300,
@@ -79,10 +85,6 @@ function pax_sup_default_menu_items() {
         ),
         'help' => array(
             'label'   => __( 'Help Center', 'pax-support-pro' ),
-            'visible' => 1,
-        ),
-        'speed' => array(
-            'label'   => __( 'Super Speed', 'pax-support-pro' ),
             'visible' => 1,
         ),
         'livechat' => array(
