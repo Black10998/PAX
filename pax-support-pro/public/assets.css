@@ -123,12 +123,42 @@
   display: flex !important;
 }
 
+#pax-chat.is-opening {
+  animation: slideInFromBottom 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
 #pax-chat.is-open {
   pointer-events: all;
+  opacity: 1;
+  transform: translateY(0) scale(1) rotate(0deg);
 }
 
 #pax-chat.is-closing {
+  animation: slideOutToBottom 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
+}
+
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes slideOutToBottom {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98) rotate(-3deg);
+  }
 }
 
 /* Legacy support for .open class */
@@ -139,8 +169,17 @@
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
-  #pax-chat {
+  #pax-chat,
+  #pax-chat.is-opening,
+  #pax-chat.is-closing {
+    animation: none !important;
     transition: none !important;
+  }
+  
+  #pax-chat.is-opening,
+  #pax-chat.is-open {
+    opacity: 1;
+    transform: none;
   }
 }
 

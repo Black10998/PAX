@@ -60,10 +60,17 @@ class PAX_Support_Pro_Updater {
         $this->update_checker->setBranch( 'main' );
         
         // Set subdirectory where plugin files are located
-        $this->update_checker->getVcsApi()->setSubdirectory( 'pax-support-pro' );
+        $vcs = $this->update_checker->getVcsApi();
+        if ( $vcs && method_exists( $vcs, 'setRepositorySubdirectory' ) ) {
+            $vcs->setRepositorySubdirectory( 'pax-support-pro' );
+        } elseif ( $vcs && method_exists( $vcs, 'setSubdirectory' ) ) {
+            $vcs->setSubdirectory( 'pax-support-pro' );
+        }
         
         // Enable release assets for updates
-        $this->update_checker->getVcsApi()->enableReleaseAssets();
+        if ( $vcs && method_exists( $vcs, 'enableReleaseAssets' ) ) {
+            $vcs->enableReleaseAssets();
+        }
     }
     
     /**

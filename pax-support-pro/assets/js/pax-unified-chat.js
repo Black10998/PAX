@@ -660,14 +660,18 @@
                 assistant: {
                     messages: [],
                     context: {},
-                    history: []
+                    history: [],
+                    aiController: null
                 },
                 liveagent: {
                     sessionId: null,
                     messages: [],
-                    status: 'idle', // 'idle' | 'pending' | 'active' | 'closed'
+                    status: 'idle',
                     agentInfo: null,
-                    unreadCount: 0
+                    unreadCount: 0,
+                    restBase: null,
+                    startedAt: null,
+                    timeout: null
                 }
             };
             this.replyToMessage = null;
