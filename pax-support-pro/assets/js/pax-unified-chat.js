@@ -1006,33 +1006,28 @@
                         continue;
                     }
                     
-                    const icon = menuIcons[key] || 'dashicons-admin-generic';
+                    const icon = menuIcons[key] || (item.url ? 'dashicons-external' : 'dashicons-admin-generic');
                     const label = item.label || key;
 
-                    menuHTML += `
-                        <button class="pax-menu-item" data-action="${key}">
-                            <span class="dashicons ${icon}"></span>
-                            <span>${label}</span>
-                        </button>
-                    `;
+                    if (item.url) {
+                        menuHTML += `
+                            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="pax-menu-item pax-custom-menu-link">
+                                <span class="dashicons ${icon}"></span>
+                                <span>${label}</span>
+                            </a>
+                        `;
+                    } else {
+                        menuHTML += `
+                            <button class="pax-menu-item" data-action="${key}">
+                                <span class="dashicons ${icon}"></span>
+                                <span>${label}</span>
+                            </button>
+                        `;
+                    }
                     itemCount++;
                 }
                 
-                // Add custom menus
-                const customMenus = window.paxSupportPro?.customMenus || [];
-                if (customMenus.length > 0) {
-                    for (const menu of customMenus) {
-                        if (menu.name && menu.url) {
-                            menuHTML += `
-                                <a href="${menu.url}" target="_blank" rel="noopener noreferrer" class="pax-menu-item pax-custom-menu-link">
-                                    <span class="dashicons dashicons-external"></span>
-                                    <span>${menu.name}</span>
-                                </a>
-                            `;
-                            itemCount++;
-                        }
-                    }
-                }
+
             }
 
             console.log(`PAX-ACCESS: Created ${itemCount} menu items (including custom menus)`);

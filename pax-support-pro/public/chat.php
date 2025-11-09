@@ -164,11 +164,6 @@ function pax_sup_enqueue_public_assets() {
         ),
         'menuItems' => $menu_items,
         'menuIcons' => $menu_icons_map,
-        'customMenus' => isset( $options['pax_chat_custom_menus'] ) && is_array( $options['pax_chat_custom_menus'] )
-            ? array_values( array_filter( $options['pax_chat_custom_menus'], function( $menu ) {
-                return ! empty( $menu['enabled'] ) && ! empty( $menu['name'] ) && ! empty( $menu['url'] );
-            } ) )
-            : array(),
         'rest'    => array(
             'chat'     => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/chat' ) ),
             'ai'       => esc_url_raw( rest_url( 'pax-support/v1/ai-chat' ) ),

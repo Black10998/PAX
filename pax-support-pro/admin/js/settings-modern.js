@@ -23,7 +23,7 @@
         initMenuItemsSync();
         initPreviewHelp();
         initResetReactionsButton();
-        initCustomMenus();
+        initMenuItems();
     }
 
     /**
@@ -975,47 +975,50 @@
     document.head.appendChild(style);
     
     /**
-     * Initialize Custom Menus
+     * Initialize Unified Menu Items
      */
-    function initCustomMenus() {
-        const addBtn = document.getElementById('pax-add-custom-menu');
-        const menusList = document.getElementById('pax-custom-menus-list');
+    function initMenuItems() {
+        const addBtn = document.getElementById('pax-add-menu-item');
+        const menusList = document.getElementById('pax-menu-items-list');
         
         if (!addBtn || !menusList) return;
         
-        let menuIndex = menusList.querySelectorAll('.pax-custom-menu-item').length;
+        let menuIndex = Date.now();
         
-        // Add new menu item
+        // Add new custom menu item
         addBtn.addEventListener('click', function() {
+            const key = 'custom_' + menuIndex;
             const newItem = document.createElement('div');
-            newItem.className = 'pax-custom-menu-item';
-            newItem.setAttribute('data-index', menuIndex);
+            newItem.className = 'pax-menu-item';
+            newItem.setAttribute('data-key', key);
+            newItem.setAttribute('draggable', 'true');
             newItem.innerHTML = `
-                <div class="pax-custom-menu-drag">
+                <div class="pax-menu-item-drag">
                     <span class="dashicons dashicons-menu"></span>
                 </div>
-                <div class="pax-custom-menu-fields">
-                    <input type="text" 
-                           name="pax_chat_custom_menus[${menuIndex}][name]" 
-                           value="" 
-                           class="pax-text-input"
-                           placeholder="Menu Name"
-                           style="width: 200px; margin-right: 10px;">
-                    <input type="url" 
-                           name="pax_chat_custom_menus[${menuIndex}][url]" 
-                           value="" 
-                           class="pax-text-input"
-                           placeholder="https://example.com"
-                           style="flex: 1; margin-right: 10px;">
+                <div class="pax-menu-item-icon">
+                    <span class="dashicons dashicons-external"></span>
                 </div>
-                <label class="pax-toggle">
+                <div class="pax-menu-item-content">
+                    <input type="text" 
+                           name="menu_items[${key}][label]" 
+                           value="" 
+                           class="pax-menu-item-label"
+                           placeholder="Label">
+                    <input type="url" 
+                           name="menu_items[${key}][url]" 
+                           value="" 
+                           class="pax-menu-item-url"
+                           placeholder="https://example.com">
+                </div>
+                <label class="pax-toggle pax-menu-item-toggle">
                     <input type="checkbox" 
-                           name="pax_chat_custom_menus[${menuIndex}][enabled]" 
+                           name="menu_items[${key}][visible]" 
                            value="1"
                            checked>
                     <span class="pax-toggle-slider"></span>
                 </label>
-                <button type="button" class="pax-btn-icon pax-remove-custom-menu" title="Remove">
+                <button type="button" class="pax-btn-icon pax-remove-menu-item">
                     <span class="dashicons dashicons-trash"></span>
                 </button>
             `;
@@ -1023,29 +1026,26 @@
             menusList.appendChild(newItem);
             menuIndex++;
             
-            // Attach remove handler
-            attachRemoveHandler(newItem.querySelector('.pax-remove-custom-menu'));
+            attachRemoveHandler(newItem.querySelector('.pax-remove-menu-item'));
+            attachDragHandlers(newItem);
         });
         
         // Remove menu item
         function attachRemoveHandler(btn) {
             if (!btn) return;
             btn.addEventListener('click', function() {
-                const item = this.closest('.pax-custom-menu-item');
+                const item = this.closest('.pax-menu-item');
                 if (item) {
                     item.style.opacity = '0';
                     item.style.transform = 'translateX(-20px)';
-                    setTimeout(function() {
-                        item.remove();
-                    }, 200);
+                    setTimeout(() => item.remove(), 200);
                 }
             });
         }
         
-        // Attach to existing remove buttons
-        menusList.querySelectorAll('.pax-remove-custom-menu').forEach(attachRemoveHandler);
+        menusList.querySelectorAll('.pax-remove-menu-item').forEach(attachRemoveHandler);
         
-        // Make sortable (simple drag and drop)
+        // Drag and drop
         let draggedItem = null;
         
         menusList.addEventListener('dragstart', function(e) {

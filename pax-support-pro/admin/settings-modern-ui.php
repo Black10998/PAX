@@ -862,7 +862,7 @@ function pax_sup_render_modern_settings() {
                         </div>
                         <div class="pax-card-body">
                             <p class="pax-form-description" style="margin-bottom: 20px;">
-                                <?php esc_html_e( 'Customize the menu items shown in the chat widget. Click on a label to edit it inline. Changes sync in real-time.', 'pax-support-pro' ); ?>
+                                <?php esc_html_e( 'Customize menu items and add custom links. Drag to reorder.', 'pax-support-pro' ); ?>
                             </p>
                             
                             <div id="pax-menu-items-list">
@@ -884,14 +884,20 @@ function pax_sup_render_modern_settings() {
                                     'myreq'         => 'dashicons-list-view',
                                     'feedback'      => 'dashicons-star-filled',
                                     'donate'        => 'dashicons-heart',
+                                    'custom'        => 'dashicons-external',
                                 );
                                 
                                 foreach ( $menu_items as $key => $item ) :
                                     $label = isset( $item['label'] ) ? $item['label'] : ucfirst( $key );
                                     $visible = isset( $item['visible'] ) ? $item['visible'] : 1;
-                                    $icon_class = isset( $menu_icons_map[ $key ] ) ? $menu_icons_map[ $key ] : 'dashicons-admin-generic';
+                                    $url = isset( $item['url'] ) ? $item['url'] : '';
+                                    $is_custom = !empty( $url );
+                                    $icon_class = isset( $menu_icons_map[ $key ] ) ? $menu_icons_map[ $key ] : ( $is_custom ? 'dashicons-external' : 'dashicons-admin-generic' );
                                 ?>
-                                <div class="pax-menu-item" data-key="<?php echo esc_attr( $key ); ?>">
+                                <div class="pax-menu-item" data-key="<?php echo esc_attr( $key ); ?>" draggable="true">
+                                    <div class="pax-menu-item-drag">
+                                        <span class="dashicons dashicons-menu"></span>
+                                    </div>
                                     <div class="pax-menu-item-icon">
                                         <span class="dashicons <?php echo esc_attr( $icon_class ); ?>"></span>
                                     </div>
@@ -900,9 +906,16 @@ function pax_sup_render_modern_settings() {
                                                name="menu_items[<?php echo esc_attr( $key ); ?>][label]" 
                                                value="<?php echo esc_attr( $label ); ?>" 
                                                class="pax-menu-item-label"
-                                               data-original="<?php echo esc_attr( $label ); ?>"
-                                               placeholder="<?php echo esc_attr( ucfirst( $key ) ); ?>">
+                                               placeholder="<?php esc_attr_e( 'Label', 'pax-support-pro' ); ?>">
+                                        <?php if ( $is_custom ) : ?>
+                                        <input type="url" 
+                                               name="menu_items[<?php echo esc_attr( $key ); ?>][url]" 
+                                               value="<?php echo esc_attr( $url ); ?>" 
+                                               class="pax-menu-item-url"
+                                               placeholder="https://example.com">
+                                        <?php else : ?>
                                         <span class="pax-menu-item-key"><?php echo esc_html( $key ); ?></span>
+                                        <?php endif; ?>
                                     </div>
                                     <label class="pax-toggle pax-menu-item-toggle">
                                         <input type="checkbox" 
@@ -911,78 +924,23 @@ function pax_sup_render_modern_settings() {
                                                <?php checked( $visible ); ?>>
                                         <span class="pax-toggle-slider"></span>
                                     </label>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Custom Menus -->
-                    <div class="pax-card">
-                        <div class="pax-card-header">
-                            <span class="dashicons dashicons-menu-alt"></span>
-                            <h2><?php esc_html_e( 'Custom Menus', 'pax-support-pro' ); ?></h2>
-                        </div>
-                        <div class="pax-card-body">
-                            <p class="pax-form-description" style="margin-bottom: 20px;">
-                                <?php esc_html_e( 'Add custom menu links that will appear in the chat widget. These will be rendered where legacy buttons were removed.', 'pax-support-pro' ); ?>
-                            </p>
-                            
-                            <div id="pax-custom-menus-list">
-                                <?php
-                                $custom_menus = isset( $options['pax_chat_custom_menus'] ) && is_array( $options['pax_chat_custom_menus'] )
-                                    ? $options['pax_chat_custom_menus']
-                                    : array();
-                                
-                                if ( empty( $custom_menus ) ) {
-                                    $custom_menus = array(
-                                        array( 'name' => '', 'url' => '', 'enabled' => 1 )
-                                    );
-                                }
-                                
-                                foreach ( $custom_menus as $index => $menu ) :
-                                    $name = isset( $menu['name'] ) ? $menu['name'] : '';
-                                    $url = isset( $menu['url'] ) ? $menu['url'] : '';
-                                    $enabled = isset( $menu['enabled'] ) ? $menu['enabled'] : 1;
-                                ?>
-                                <div class="pax-custom-menu-item" data-index="<?php echo esc_attr( $index ); ?>">
-                                    <div class="pax-custom-menu-drag">
-                                        <span class="dashicons dashicons-menu"></span>
-                                    </div>
-                                    <div class="pax-custom-menu-fields">
-                                        <input type="text" 
-                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][name]" 
-                                               value="<?php echo esc_attr( $name ); ?>" 
-                                               class="pax-text-input"
-                                               placeholder="<?php esc_attr_e( 'Menu Name', 'pax-support-pro' ); ?>"
-                                               style="width: 200px; margin-right: 10px;">
-                                        <input type="url" 
-                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][url]" 
-                                               value="<?php echo esc_attr( $url ); ?>" 
-                                               class="pax-text-input"
-                                               placeholder="<?php esc_attr_e( 'https://example.com', 'pax-support-pro' ); ?>"
-                                               style="flex: 1; margin-right: 10px;">
-                                    </div>
-                                    <label class="pax-toggle">
-                                        <input type="checkbox" 
-                                               name="pax_chat_custom_menus[<?php echo esc_attr( $index ); ?>][enabled]" 
-                                               value="1"
-                                               <?php checked( $enabled ); ?>>
-                                        <span class="pax-toggle-slider"></span>
-                                    </label>
-                                    <button type="button" class="pax-btn-icon pax-remove-custom-menu" title="<?php esc_attr_e( 'Remove', 'pax-support-pro' ); ?>">
+                                    <?php if ( $is_custom ) : ?>
+                                    <button type="button" class="pax-btn-icon pax-remove-menu-item">
                                         <span class="dashicons dashicons-trash"></span>
                                     </button>
+                                    <?php endif; ?>
                                 </div>
                                 <?php endforeach; ?>
                             </div>
                             
-                            <button type="button" id="pax-add-custom-menu" class="button button-secondary" style="margin-top: 15px;">
-                                <span class="dashicons dashicons-plus-alt" style="margin-top: 3px;"></span>
-                                <?php esc_html_e( 'Add Custom Menu', 'pax-support-pro' ); ?>
+                            <button type="button" id="pax-add-menu-item" class="button button-secondary" style="margin-top: 15px;">
+                                <span class="dashicons dashicons-plus-alt"></span>
+                                <?php esc_html_e( 'Add Custom Link', 'pax-support-pro' ); ?>
                             </button>
                         </div>
                     </div>
+
+
 
                 </div>
 
