@@ -1,0 +1,82 @@
+# Copyright (C) 2025 Ahmad Al Khalaf
+# This file is distributed under the GPL v2 or later.
+msgid ""
+msgstr ""
+"Project-Id-Version: PAX Support Pro 4.4.0\n"
+"Report-Msgid-Bugs-To: https://github.com/Black10998/Black10998/issues\n"
+"POT-Creation-Date: 2025-11-03 21:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: admin/settings.php
+msgid "PAX Support Pro Settings"
+msgstr ""
+
+#: admin/settings.php
+msgid "Settings saved."
+msgstr ""
+
+#: public/chat.php
+msgid "Support"
+msgstr ""
+
+#: public/chat.php
+msgid "Assistant"
+msgstr ""
+
+#: public/chat.php
+msgid "Offline"
+msgstr ""
+
+#: public/chat.php
+msgid "Type your message..."
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "General Settings"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Enable Plugin"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Enable Chat"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Chat Customization"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Welcome Message"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Layout & Position"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Chat Launcher Position"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Bottom Left"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Bottom Right"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Top Left"
+msgstr ""
+
+#: admin/settings-modern-ui.php
+msgid "Top Right"
+msgstr ""

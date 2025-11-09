@@ -1,0 +1,79 @@
+<div id="pax-live-preview" class="pax-live-preview-container">
+    <div class="pax-live-preview-header">
+        <span class="dashicons dashicons-visibility"></span>
+        <h3>Live Preview</h3>
+        <span class="pax-live-indicator">
+            <span class="pax-pulse"></span>
+            LIVE
+        </span>
+    </div>
+    
+    <div class="pax-live-preview-content">
+        <!-- Chat Launcher Preview -->
+        <div class="pax-preview-launcher" id="pax-preview-launcher">
+            <svg viewBox="0 0 24 24">
+                <path d="M4 3h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6.6l-4.2 3.5a1 1 0 0 1-1.6-.8V16H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+            </svg>
+        </div>
+        
+        <!-- Chat Window Preview -->
+        <div class="pax-preview-chat" id="pax-preview-chat">
+            <div class="pax-preview-header">
+                <span class="pax-led"></span>
+                <div>
+                    <div class="pax-preview-title" id="pax-preview-brand">PAX SUPPORT</div>
+                    <div class="pax-preview-sub">Assistant</div>
+                </div>
+                <div class="pax-spacer"></div>
+                <button class="pax-preview-iconbtn">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 7a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4zm0 7a2 2 0 110-4 2 2 0 010 4z"/>
+                    </svg>
+                </button>
+                <button class="pax-preview-iconbtn">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M6.7 5.3 5.3 6.7 10.6 12l-5.3 5.3 1.4 1.4L12 13.4l5.3 5.3 1.4-1.4L13.4 12l5.3-5.3-1.4-1.4L12 10.6z"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="pax-preview-log">
+                <div class="pax-preview-msg bot">
+                    <span id="pax-preview-welcome">👋 Welcome! How can I help you today?</span>
+                </div>
+                <div class="pax-preview-msg user">
+                    <span>This is a preview of your chat interface</span>
+                </div>
+            </div>
+            
+            <div class="pax-preview-input">
+                <input type="text" placeholder="Type your message..." readonly>
+                <button class="pax-preview-send" id="pax-preview-send">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Status Indicators -->
+        <div class="pax-preview-status">
+            <div class="pax-status-item" id="pax-status-enabled">
+                <span class="pax-status-dot"></span>
+                <span>Plugin Enabled</span>
+            </div>
+            <div class="pax-status-item" id="pax-status-chat">
+                <span class="pax-status-dot"></span>
+                <span>Chat Enabled</span>
+            </div>
+            <div class="pax-status-item" id="pax-status-ai">
+                <span class="pax-status-dot"></span>
+                <span>AI Assistant</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="pax-live-preview-footer">
+        <small>Changes update instantly • No save required to preview</small>
+    </div>
+</div>

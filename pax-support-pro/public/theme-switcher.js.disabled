@@ -1,0 +1,308 @@
+/**
+ * Theme Switcher for PAX Support Pro
+ * Allows users to switch between Light, Dark, and Neon modes
+ */
+
+(function() {
+    'use strict';
+
+    // Theme configuration
+    const THEMES = {
+        neon: {
+            name: 'Neon Mode',
+            icon: '✨',
+            colors: {
+                primary: '#e53935',
+                secondary: '#2196F3',
+                background: '#1a1a1a',
+                surface: '#2a2a2a',
+                text: '#ffffff',
+                textSecondary: '#b0b0b0'
+            }
+        },
+        light: {
+            name: 'Light Mode',
+            icon: '☀️',
+            colors: {
+                primary: '#1976D2',
+                secondary: '#4CAF50',
+                background: '#ffffff',
+                surface: '#f5f7fa',
+                text: '#333333',
+                textSecondary: '#666666'
+            }
+        },
+        dark: {
+            name: 'Dark Mode',
+            icon: '🌙',
+            colors: {
+                primary: '#BB86FC',
+                secondary: '#03DAC6',
+                background: '#121212',
+                surface: '#1e1e1e',
+                text: '#ffffff',
+                textSecondary: '#b0b0b0'
+            }
+        }
+    };
+
+    // Storage key
+    const STORAGE_KEY = 'pax_support_theme';
+
+    /**
+     * Get current theme from localStorage or default
+     */
+    function getCurrentTheme() {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        return stored && THEMES[stored] ? stored : 'neon';
+    }
+
+    /**
+     * Set theme
+     */
+    function setTheme(themeName) {
+        if (!THEMES[themeName]) {
+            console.error('Invalid theme:', themeName);
+            return;
+        }
+
+        const theme = THEMES[themeName];
+        const root = document.documentElement;
+
+        // Apply CSS variables
+        Object.entries(theme.colors).forEach(([key, value]) => {
+            root.style.setProperty(`--pax-theme-${key}`, value);
+        });
+
+        // Add theme class to body
+        document.body.classList.remove('pax-theme-neon', 'pax-theme-light', 'pax-theme-dark');
+        document.body.classList.add(`pax-theme-${themeName}`);
+
+        // Save to localStorage
+        localStorage.setItem(STORAGE_KEY, themeName);
+
+        // Dispatch custom event
+        window.dispatchEvent(new CustomEvent('paxThemeChanged', {
+            detail: { theme: themeName }
+        }));
+    }
+
+    /**
+     * Create theme switcher UI
+     */
+    function createThemeSwitcher() {
+        // Check if theme switching is allowed
+        if (window.paxSupportConfig && window.paxSupportConfig.allowThemeSwitching === false) {
+            return;
+        }
+
+        const switcher = document.createElement('div');
+        switcher.className = 'pax-theme-switcher';
+        switcher.innerHTML = `
+            <button class="pax-theme-toggle" aria-label="Switch theme" title="Switch theme">
+                <span class="pax-theme-icon">⚙️</span>
+            </button>
+            <div class="pax-theme-menu">
+                <div class="pax-theme-menu-header">Choose Theme</div>
+                ${Object.entries(THEMES).map(([key, theme]) => `
+                    <button class="pax-theme-option" data-theme="${key}">
+                        <span class="pax-theme-option-icon">${theme.icon}</span>
+                        <span class="pax-theme-option-name">${theme.name}</span>
+                        <span class="pax-theme-option-check">✓</span>
+                    </button>
+                `).join('')}
+            </div>
+        `;
+
+        // Add styles
+        const style = document.createElement('style');
+        style.textContent = `
+            .pax-theme-switcher {
+                position: fixed;
+                bottom: 80px;
+                right: 20px;
+                z-index: 9998;
+            }
+
+            .pax-theme-toggle {
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                background: var(--pax-theme-primary, #e53935);
+                border: none;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+
+            .pax-theme-toggle:hover {
+                transform: scale(1.1);
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+            }
+
+            .pax-theme-icon {
+                font-size: 24px;
+                filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+            }
+
+            .pax-theme-menu {
+                position: absolute;
+                bottom: 60px;
+                right: 0;
+                background: var(--pax-theme-surface, #2a2a2a);
+                border-radius: 12px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+                padding: 8px;
+                min-width: 200px;
+                opacity: 0;
+                visibility: hidden;
+                transform: translateY(10px);
+                transition: opacity 0.2s, visibility 0.2s, transform 0.2s;
+            }
+
+            .pax-theme-switcher.active .pax-theme-menu {
+                opacity: 1;
+                visibility: visible;
+                transform: translateY(0);
+            }
+
+            .pax-theme-menu-header {
+                padding: 12px 16px;
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--pax-theme-text, #ffffff);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                margin-bottom: 8px;
+            }
+
+            .pax-theme-option {
+                width: 100%;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 12px 16px;
+                background: transparent;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                color: var(--pax-theme-text, #ffffff);
+                font-size: 14px;
+                transition: background 0.2s;
+            }
+
+            .pax-theme-option:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+
+            .pax-theme-option.active {
+                background: var(--pax-theme-primary, #e53935);
+            }
+
+            .pax-theme-option-icon {
+                font-size: 20px;
+            }
+
+            .pax-theme-option-name {
+                flex: 1;
+                text-align: left;
+            }
+
+            .pax-theme-option-check {
+                opacity: 0;
+                font-size: 16px;
+            }
+
+            .pax-theme-option.active .pax-theme-option-check {
+                opacity: 1;
+            }
+
+            @media (max-width: 768px) {
+                .pax-theme-switcher {
+                    bottom: 70px;
+                    right: 15px;
+                }
+
+                .pax-theme-toggle {
+                    width: 44px;
+                    height: 44px;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Add event listeners
+        const toggle = switcher.querySelector('.pax-theme-toggle');
+        const menu = switcher.querySelector('.pax-theme-menu');
+        const options = switcher.querySelectorAll('.pax-theme-option');
+
+        toggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            switcher.classList.toggle('active');
+        });
+
+        options.forEach(option => {
+            option.addEventListener('click', function() {
+                const theme = this.dataset.theme;
+                setTheme(theme);
+                updateActiveOption();
+                switcher.classList.remove('active');
+            });
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!switcher.contains(e.target)) {
+                switcher.classList.remove('active');
+            }
+        });
+
+        // Update active option
+        function updateActiveOption() {
+            const currentTheme = getCurrentTheme();
+            options.forEach(option => {
+                option.classList.toggle('active', option.dataset.theme === currentTheme);
+            });
+        }
+
+        updateActiveOption();
+        return switcher;
+    }
+
+    /**
+     * Initialize theme system
+     */
+    function init() {
+        // Apply saved theme or default
+        const currentTheme = getCurrentTheme();
+        setTheme(currentTheme);
+
+        // Create theme switcher UI when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                const switcher = createThemeSwitcher();
+                if (switcher) {
+                    document.body.appendChild(switcher);
+                }
+            });
+        } else {
+            const switcher = createThemeSwitcher();
+            if (switcher) {
+                document.body.appendChild(switcher);
+            }
+        }
+    }
+
+    // Export API
+    window.paxTheme = {
+        setTheme: setTheme,
+        getCurrentTheme: getCurrentTheme,
+        themes: THEMES
+    };
+
+    // Initialize
+    init();
+
+})();

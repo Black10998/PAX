@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" data-pax-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PAX Support Dashboard - Theme Test</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/dashicons/0.9.0/dashicons.min.css">
+    <link rel="stylesheet" href="css/console-modern.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: var(--pax-console-bg);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="toplevel_page_pax-support-console">
+    <div class="wrap pax-console-modern">
+        <!-- Modern Header Bar -->
+        <div class="pax-console-header">
+            <div class="pax-console-header-left">
+                <span class="dashicons dashicons-dashboard pax-console-icon"></span>
+                <h1 class="pax-console-title">PAX Support Console</h1>
+            </div>
+            <div class="pax-console-header-right">
+                <button type="button" class="pax-console-btn pax-console-btn-refresh" title="Refresh the page to see latest updates">
+                    <span class="dashicons dashicons-update"></span>
+                </button>
+                <form method="get" class="pax-console-search-form">
+                    <input type="search" class="pax-console-search-input" placeholder="Search tickets…" />
+                    <button type="submit" class="pax-console-search-btn" title="Search tickets by subject or message content">
+                        <span class="dashicons dashicons-search"></span>
+                    </button>
+                </form>
+                <select class="pax-console-filter" title="Filter tickets by status">
+                    <option value="">Filter</option>
+                    <option value="">Open Tickets</option>
+                    <option value="">Closed Tickets</option>
+                    <option value="">Frozen Tickets</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- System Metrics Cards -->
+        <div class="pax-console-metrics">
+            <div class="pax-metric-card" title="Current PHP version running on your server">
+                <div class="pax-metric-icon pax-metric-icon-cpu">
+                    <span class="dashicons dashicons-performance"></span>
+                </div>
+                <div class="pax-metric-content">
+                    <div class="pax-metric-label">PHP Version</div>
+                    <div class="pax-metric-value">8.2.0</div>
+                </div>
+            </div>
+
+            <div class="pax-metric-card" title="Current memory usage vs. configured limit">
+                <div class="pax-metric-icon pax-metric-icon-memory">
+                    <span class="dashicons dashicons-database"></span>
+                </div>
+                <div class="pax-metric-content">
+                    <div class="pax-metric-label">Memory Usage</div>
+                    <div class="pax-metric-value">45 MB</div>
+                    <div class="pax-metric-sub">256 MB limit</div>
+                </div>
+            </div>
+
+            <div class="pax-metric-card" title="Current server load average (1 minute)">
+                <div class="pax-metric-icon pax-metric-icon-server">
+                    <span class="dashicons dashicons-admin-site-alt3"></span>
+                </div>
+                <div class="pax-metric-content">
+                    <div class="pax-metric-label">Server Load</div>
+                    <div class="pax-metric-value">0.45</div>
+                </div>
+            </div>
+
+            <div class="pax-metric-card" title="Current server time in your timezone">
+                <div class="pax-metric-icon pax-metric-icon-time">
+                    <span class="dashicons dashicons-clock"></span>
+                </div>
+                <div class="pax-metric-content">
+                    <div class="pax-metric-label">Server Time</div>
+                    <div class="pax-metric-value">14:30:45</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sample Content -->
+        <div class="pax-console-notice pax-console-notice-success">
+            <span class="dashicons dashicons-yes-alt"></span>
+            <p>Dashboard modernization complete! Dark/light mode toggle is now available.</p>
+        </div>
+    </div>
+
+    <script src="js/theme-toggle.js"></script>
+</body>
+</html>
