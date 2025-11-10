@@ -42,7 +42,12 @@ function pax_sup_rest_upload_file( $request ) {
         return new WP_Error( 'not_found', __( 'Session not found', 'pax-support-pro' ), array( 'status' => 404 ) );
     }
 
-    if ( $session['status'] !== 'active' ) {
+    $status = $session['status'];
+    if ( 'accepted' === $status ) {
+        $status = 'active';
+    }
+
+    if ( $status !== 'active' ) {
         return new WP_Error( 'invalid_status', __( 'Session is not active', 'pax-support-pro' ), array( 'status' => 400 ) );
     }
 

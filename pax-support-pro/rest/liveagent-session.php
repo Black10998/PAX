@@ -111,7 +111,12 @@ function pax_sup_rest_create_session( $request ) {
         ), 200 );
     }
 
-    $session_id = pax_sup_create_liveagent_session( $user_id );
+    $session_id = pax_sup_create_liveagent_session(
+        $user_id,
+        array(
+            'page_url' => $request->get_param( 'page_url' ),
+        )
+    );
 
     if ( ! $session_id ) {
         return new WP_Error( 'create_failed', __( 'Failed to create session', 'pax-support-pro' ), array( 'status' => 500 ) );

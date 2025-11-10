@@ -42,67 +42,19 @@ add_action( 'rest_api_init', 'pax_sup_register_liveagent_message_routes' );
 function pax_sup_rest_send_message( $request ) {
     pax_sup_liveagent_nocache_headers();
 
-    $session_id = $request->get_param( 'session_id' );
-    $message = $request->get_param( 'message' );
-    $sender = $request->get_param( 'sender' );
-    $reply_to = $request->get_param( 'reply_to' );
-    $attachment_id = $request->get_param( 'attachment_id' );
+    $proxy = new WP_REST_Request( 'POST', '/pax/v1/live/message' );
+    $proxy->set_param( 'session_id', $request->get_param( 'session_id' ) );
+    $proxy->set_param( 'message', $request->get_param( 'message' ) );
 
-    // Validate
-    if ( empty( $message ) || strlen( $message ) > 5000 ) {
-        return new WP_Error( 'invalid_message', __( 'Message is required and must be less than 5000 characters', 'pax-support-pro' ), array( 'status' => 400 ) );
+    if ( $request->get_param( 'reply_to' ) ) {
+        $proxy->set_param( 'reply_to', $request->get_param( 'reply_to' ) );
     }
 
-    $session = pax_sup_get_liveagent_session( $session_id );
-    if ( ! $session ) {
-        return new WP_Error( 'not_found', __( 'Session not found', 'pax-support-pro' ), array( 'status' => 404 ) );
+    if ( $request->get_param( 'attachment_id' ) ) {
+        $proxy->set_param( 'attachment_id', $request->get_param( 'attachment_id' ) );
     }
 
-    if ( $session['status'] !== 'active' ) {
-        return new WP_Error( 'invalid_status', __( 'Session is not active', 'pax-support-pro' ), array( 'status' => 400 ) );
-    }
-
-    // Determine sender
-    $is_agent = current_user_can( 'manage_pax_chats' );
-    $sender = $is_agent ? 'agent' : 'user';
-
-    // Build message data
-    $message_data = array(
-        'sender' => $sender,
-        'message' => sanitize_textarea_field( $message ),
-        'reply_to' => $reply_to ? sanitize_text_field( $reply_to ) : null,
-    );
-
-    // Add attachment if provided
-    if ( $attachment_id ) {
-        $attachment = get_post( $attachment_id );
-        if ( $attachment && $attachment->post_type === 'attachment' ) {
-            $message_data['attachment'] = array(
-                'id' => $attachment_id,
-                'url' => wp_get_attachment_url( $attachment_id ),
-                'filename' => basename( get_attached_file( $attachment_id ) ),
-            );
-        }
-    }
-
-    $added = pax_sup_add_liveagent_message( $session_id, $message_data );
-
-    if ( ! $added ) {
-        return new WP_Error( 'send_failed', __( 'Failed to send message', 'pax-support-pro' ), array( 'status' => 500 ) );
-    }
-
-    // Get the added message
-    $session = pax_sup_get_liveagent_session( $session_id );
-    $messages = $session['messages'];
-    $new_message = end( $messages );
-
-    // Send notification
-    pax_sup_notify_new_message( $session_id, $new_message, $sender );
-
-    return new WP_REST_Response( array(
-        'success' => true,
-        'message' => $new_message,
-    ), 201 );
+    return pax_live_agent_message( $proxy );
 }
 
 /**

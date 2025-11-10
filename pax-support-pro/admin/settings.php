@@ -73,13 +73,6 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             PAX_SUP_VER
         );
         
-        wp_enqueue_style(
-            'pax-liveagent-settings',
-            PAX_SUP_URL . 'admin/css/live-agent-settings.css',
-            array(),
-            PAX_SUP_VER
-        );
-
         wp_enqueue_script(
             'pax-live-preview',
             PAX_SUP_URL . 'admin/live-preview/live-preview.js',
@@ -88,27 +81,39 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             true
         );
 
-        wp_enqueue_script(
-            'pax-liveagent-settings',
-            PAX_SUP_URL . 'admin/js/live-agent-settings.js',
-            array(),
-            PAX_SUP_VER,
-            true
-        );
+        $settings_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
+        if ( 'live-agent' === $settings_tab ) {
+            wp_enqueue_style(
+                'pax-live-agent-settings',
+                PAX_SUP_URL . 'admin/css/live-agent-settings.css',
+                array( 'pax-settings-modern' ),
+                PAX_SUP_VER
+            );
 
-        wp_localize_script(
-            'pax-liveagent-settings',
-            'paxLiveAgentSettings',
-            array(
-                'restUrl' => untrailingslashit( rest_url( 'pax/v1' ) ),
-                'nonce'   => wp_create_nonce( 'wp_rest' ),
-                'strings' => array(
-                    'checking' => __( 'Testing connection…', 'pax-support-pro' ),
-                    'success'  => __( 'Connection successful', 'pax-support-pro' ),
-                    'error'    => __( 'Connection failed (%s)', 'pax-support-pro' ),
-                ),
-            )
-        );
+            wp_enqueue_script(
+                'pax-live-agent-settings',
+                PAX_SUP_URL . 'admin/js/live-agent-settings.js',
+                array(),
+                PAX_SUP_VER,
+                true
+            );
+
+            wp_localize_script(
+                'pax-live-agent-settings',
+                'paxLiveAgentSettings',
+                array(
+                    'restBase'     => trailingslashit( rest_url( 'pax/v1' ) ),
+                    'testEndpoint' => rest_url( 'pax/v1/live/status' ),
+                    'nonce'        => wp_create_nonce( 'wp_rest' ),
+                    'strings'      => array(
+                        'testing' => __( 'Testing connection…', 'pax-support-pro' ),
+                        'success' => __( 'Connection successful!', 'pax-support-pro' ),
+                        'failure' => __( 'Connection failed. Please review your REST API configuration.', 'pax-support-pro' ),
+                        'copied'  => __( 'Copied!', 'pax-support-pro' ),
+                    ),
+                )
+            );
+        }
     }
 
     // Enqueue modern console UI assets
@@ -194,6 +199,81 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             array( 'jquery' ),
             PAX_SUP_VER,
             true
+        );
+
+        $rest_base    = trailingslashit( rest_url( 'pax/v1' ) );
+        $site_domain  = wp_parse_url( get_site_url(), PHP_URL_HOST );
+        $site_domain  = $site_domain ? $site_domain : wp_parse_url( get_site_url(), PHP_URL_HOST );
+        $server_name  = isset( $_SERVER['SERVER_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_NAME'] ) ) : $site_domain;
+        $server_ip    = $server_name ? @gethostbyname( $server_name ) : '';
+        $current_user = wp_get_current_user();
+
+        wp_localize_script(
+            'pax-liveagent-center',
+            'paxLiveAgentCenterConfig',
+            array(
+                'rest'   => array(
+                    'base'        => $rest_base,
+                    'sessions'    => $rest_base . 'sessions',
+                    'session'     => $rest_base . 'session/',
+                    'messages'    => $rest_base . 'messages',
+                    'message'     => $rest_base . 'message',
+                    'accept'      => $rest_base . 'accept',
+                    'decline'     => $rest_base . 'decline',
+                    'close'       => $rest_base . 'close',
+                    'status'      => $rest_base . 'status',
+                    'typing'      => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/status/typing' ) ),
+                    'markRead'    => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/message/mark-read' ) ),
+                    'fileUpload'  => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/file/upload' ) ),
+                ),
+                'nonce'  => wp_create_nonce( 'wp_rest' ),
+                'assets' => array(
+                    'version' => PAX_SUP_VER,
+                    'commit'  => function_exists( 'pax_sup_get_current_commit_hash' ) ? pax_sup_get_current_commit_hash() : 'n/a',
+                ),
+                'diagnostics' => array(
+                    'restBase'   => $rest_base,
+                    'siteDomain' => $site_domain ?: get_site_url(),
+                    'serverIp'   => $server_ip ?: '',
+                ),
+                'user' => array(
+                    'id'   => $current_user instanceof WP_User ? $current_user->ID : 0,
+                    'name' => $current_user instanceof WP_User ? $current_user->display_name : '',
+                ),
+                'strings' => array(
+                    'pendingTab'      => __( 'Pending', 'pax-support-pro' ),
+                    'activeTab'       => __( 'Active', 'pax-support-pro' ),
+                    'recentTab'       => __( 'Recent', 'pax-support-pro' ),
+                    'noPending'       => __( 'No pending requests.', 'pax-support-pro' ),
+                    'noActive'        => __( 'No active chats.', 'pax-support-pro' ),
+                    'noRecent'        => __( 'No recent sessions yet.', 'pax-support-pro' ),
+                    'accept'          => __( 'Accept', 'pax-support-pro' ),
+                    'decline'         => __( 'Decline', 'pax-support-pro' ),
+                    'close'           => __( 'End Session', 'pax-support-pro' ),
+                    'cancel'          => __( 'Cancel', 'pax-support-pro' ),
+                    'confirmClose'    => __( 'End this chat session?', 'pax-support-pro' ),
+                    'confirmDecline'  => __( 'Decline this chat request?', 'pax-support-pro' ),
+                    'composerHint'    => __( 'Type a reply…', 'pax-support-pro' ),
+                    'acceptPrompt'    => __( 'Accept this chat to reply.', 'pax-support-pro' ),
+                    'closedMessage'   => __( 'This session is closed.', 'pax-support-pro' ),
+                    'uploadLabel'     => __( 'Attach file', 'pax-support-pro' ),
+                    'uploading'       => __( 'Uploading…', 'pax-support-pro' ),
+                    'uploadFailed'    => __( 'Upload failed. Please try again.', 'pax-support-pro' ),
+                    'messageFailed'   => __( 'Unable to send message. Please try again.', 'pax-support-pro' ),
+                    'send'            => __( 'Send', 'pax-support-pro' ),
+                    'unread'          => __( 'Unread', 'pax-support-pro' ),
+                    'live'            => __( 'Live', 'pax-support-pro' ),
+                    'unknownUser'     => __( 'Guest', 'pax-support-pro' ),
+                    'justNow'         => __( 'Just now', 'pax-support-pro' ),
+                    'ago'             => __( 'ago', 'pax-support-pro' ),
+                    'read'            => __( 'Read', 'pax-support-pro' ),
+                    'pingTesting'     => __( 'Pinging…', 'pax-support-pro' ),
+                    'pingSuccess'     => __( 'REST API reachable', 'pax-support-pro' ),
+                    'pingError'       => __( 'Unable to reach REST API', 'pax-support-pro' ),
+                    'emptyStateTitle' => __( 'No chat selected', 'pax-support-pro' ),
+                    'emptyStateBody'  => __( 'Choose a conversation to see messages here.', 'pax-support-pro' ),
+                ),
+            )
         );
     }
 
@@ -443,8 +523,62 @@ function pax_sup_admin_notice( $message, $type = 'success' ) {
     );
 }
 
+/**
+ * Render settings tab navigation.
+ *
+ * @param string $active_tab Active tab slug.
+ */
+function pax_sup_render_settings_tabs( $active_tab = 'general' ) {
+    $general_url    = admin_url( 'admin.php?page=pax-support-settings' );
+    $live_agent_url = add_query_arg(
+        array(
+            'page' => 'pax-support-settings',
+            'tab'  => 'live-agent',
+        ),
+        admin_url( 'admin.php' )
+    );
+
+    $tabs = array(
+        'general'    => array(
+            'label' => __( 'General', 'pax-support-pro' ),
+            'url'   => $general_url,
+            'icon'  => 'admin-generic',
+        ),
+        'live-agent' => array(
+            'label' => __( 'Live Agent', 'pax-support-pro' ),
+            'url'   => $live_agent_url,
+            'icon'  => 'format-chat',
+        ),
+    );
+
+    echo '<nav class="pax-settings-tabs" aria-label="' . esc_attr__( 'PAX Support settings tabs', 'pax-support-pro' ) . '">';
+    foreach ( $tabs as $slug => $tab ) {
+        $is_active = $active_tab === $slug;
+        printf(
+            '<a href="%1$s" class="pax-settings-tab %4$s" %5$s>'
+                . '<span class="dashicons dashicons-%3$s"></span>'
+                . '<span class="pax-settings-tab-label">%2$s</span>'
+            . '</a>',
+            esc_url( $tab['url'] ),
+            esc_html( $tab['label'] ),
+            esc_attr( $tab['icon'] ),
+            $is_active ? 'active' : '',
+            $is_active ? 'aria-current="page"' : ''
+        );
+    }
+    echo '</nav>';
+}
+
 function pax_sup_render_settings() {
     if ( ! current_user_can( pax_sup_get_console_capability() ) ) {
+        return;
+    }
+
+    $active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
+
+    if ( 'live-agent' === $active_tab ) {
+        require_once plugin_dir_path( __FILE__ ) . 'settings-live-agent.php';
+        pax_sup_render_live_agent_settings();
         return;
     }
 
@@ -563,7 +697,7 @@ function pax_sup_render_settings() {
     
     // Include modern UI rendering
     require_once plugin_dir_path( __FILE__ ) . 'settings-modern-ui.php';
-    pax_sup_render_modern_settings( $options, $stored_notice );
+    pax_sup_render_modern_settings( $options, $stored_notice, $active_tab );
 }
 
 /**

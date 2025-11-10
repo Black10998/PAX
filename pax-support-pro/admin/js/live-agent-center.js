@@ -1,682 +1,1045 @@
-/**
- * Live Agent Center JavaScript
- * Real-time chat management for agents
- */
-
-(function($) {
+(function() {
     'use strict';
 
+    const config = window.paxLiveAgentCenterConfig || {};
+    if (!config.rest || !config.rest.base) {
+        return;
+    }
+
+    const REST_BASE = ensureTrailingSlash(config.rest.base);
+    const REST_ROUTES = {
+        sessions: config.rest.sessions || (REST_BASE + 'sessions'),
+        session: config.rest.session || (REST_BASE + 'session/'),
+        messages: config.rest.messages || (REST_BASE + 'messages'),
+        message: config.rest.message || (REST_BASE + 'message'),
+        accept: config.rest.accept || (REST_BASE + 'accept'),
+        decline: config.rest.decline || (REST_BASE + 'decline'),
+        close: config.rest.close || (REST_BASE + 'close'),
+        status: config.rest.status || (REST_BASE + 'status'),
+        typing: config.rest.typing,
+        markRead: config.rest.markRead,
+        fileUpload: config.rest.fileUpload
+    };
+
     class LiveAgentCenter {
-        constructor() {
-            this.sessionId = window.paxLiveAgent?.selectedSessionId || null;
-            this.pollInterval = window.paxLiveAgent?.refreshInterval || 15000;
-            this.typingTimeout = null;
-            this.lastUpdate = null;
-            this.pollTimer = null;
-            this.isTyping = false;
-            this.lastMessageId = window.paxLiveAgent?.lastMessageId || null;
+        constructor(cfg) {
+            this.config = cfg;
+            this.state = {
+                sessions: {
+                    pending: [],
+                    active: [],
+                    recent: []
+                },
+                selectedTab: 'pending',
+                selectedSessionId: null,
+                selectedSessionStatus: null,
+                lastMessageId: null,
+                polling: {
+                    sessions: null,
+                    messages: null
+                },
+                typingTimeout: null,
+                isSending: false,
+                audioEnabled: document.querySelector('.pax-liveagent-app')?.dataset.soundEnabled === '1'
+            };
+
+            this.elements = {};
+
+            this.init();
         }
 
         init() {
+            this.cacheElements();
             this.bindEvents();
-            this.startPolling();
-            this.initAutoScroll();
-            this.startHeartbeat();
-            this.captureInitialLastMessage();
-            
-            if (this.sessionId) {
-                this.markMessagesRead();
+            this.renderDiagnostics();
+            this.fetchSessions(true);
+            this.startSessionPolling();
+
+            const params = new URLSearchParams(window.location.search);
+            const initialSession = params.get('session');
+            if (initialSession) {
+                this.loadSession(parseInt(initialSession, 10), 'pending');
+            } else if (this.config.initialSession) {
+                this.loadSession(this.config.initialSession, 'active');
             }
         }
 
-        startHeartbeat() {
-            // Update agent's last_seen every 60 seconds
-            this.updateLastSeen();
-            setInterval(() => this.updateLastSeen(), 60000);
-        }
-
-        updateLastSeen() {
-            // Update user meta to indicate agent is online
-            const userId = window.paxLiveAgent?.userId;
-            if (userId) {
-                const timestamp = Math.floor(Date.now() / 1000);
-                // Store in localStorage as backup
-                localStorage.setItem('pax_agent_last_seen', timestamp);
-                
-                // Update via AJAX
-                $.ajax({
-                    url: window.paxLiveAgent?.ajaxUrl || ajaxurl,
-                    method: 'POST',
-                    data: {
-                        action: 'pax_update_agent_status',
-                        nonce: window.paxLiveAgent?.nonce,
-                        timestamp: timestamp
-                    }
-                });
-            }
+        cacheElements() {
+            this.elements.root = document.querySelector('.pax-liveagent-app');
+            this.elements.tabButtons = Array.from(document.querySelectorAll('.pax-tab-button'));
+            this.elements.sessionLists = {
+                pending: document.querySelector('[data-list="pending"]'),
+                active: document.querySelector('[data-list="active"]'),
+                recent: document.querySelector('[data-list="recent"]')
+            };
+            this.elements.counters = {
+                pending: document.querySelector('[data-counter="pending"]'),
+                active: document.querySelector('[data-counter="active"]')
+            };
+            this.elements.emptyState = document.getElementById('pax-liveagent-empty');
+            this.elements.panel = document.getElementById('pax-liveagent-panel');
+            this.elements.avatar = document.getElementById('pax-liveagent-avatar');
+            this.elements.customerName = document.getElementById('pax-liveagent-customer-name');
+            this.elements.sessionMeta = document.getElementById('pax-liveagent-session-meta');
+            this.elements.pageUrl = document.getElementById('pax-liveagent-page-url');
+            this.elements.actionBar = document.getElementById('pax-liveagent-actions');
+            this.elements.tags = document.getElementById('pax-liveagent-session-tags');
+            this.elements.messages = document.getElementById('pax-liveagent-messages');
+            this.elements.typing = document.getElementById('pax-liveagent-typing');
+            this.elements.composer = document.getElementById('pax-liveagent-composer');
+            this.elements.attachButton = document.getElementById('pax-liveagent-attach');
+            this.elements.fileInput = document.getElementById('pax-liveagent-file');
+            this.elements.input = document.getElementById('pax-liveagent-input');
+            this.elements.sendButton = document.getElementById('pax-liveagent-send');
+            this.elements.pingButton = document.getElementById('pax-liveagent-ping');
+            this.elements.pingStatus = document.getElementById('pax-liveagent-ping-status');
+            this.elements.restLabel = document.getElementById('pax-liveagent-rest');
+            this.elements.chime = document.getElementById('pax-liveagent-chime');
         }
 
         bindEvents() {
-            const self = this;
-
-            // Session selection
-            $(document).on('click', '.pax-session-item', function() {
-                const sessionId = $(this).data('session-id');
-                window.location.href = `?page=pax-live-agent-center&session=${sessionId}`;
+            this.elements.tabButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    this.switchTab(button.dataset.tab);
+                });
             });
 
-            // Refresh sessions
-            $('.pax-refresh-sessions').on('click', function() {
-                self.refreshSessions();
+            Object.values(this.elements.sessionLists).forEach((list) => {
+                list.addEventListener('click', (event) => {
+                    const card = event.target.closest('.pax-session-card');
+                    if (!card) {
+                        return;
+                    }
+
+                    const sessionId = parseInt(card.dataset.sessionId, 10);
+                    const status = card.dataset.sessionStatus;
+
+                    if (event.target.matches('[data-action="accept"]')) {
+                        event.stopPropagation();
+                        this.acceptSession(sessionId, card);
+                        return;
+                    }
+
+                    if (event.target.matches('[data-action="decline"]')) {
+                        event.stopPropagation();
+                        this.declineSession(sessionId);
+                        return;
+                    }
+
+                    this.loadSession(sessionId, status);
+                });
             });
 
-            // Accept session
-            $(document).on('click', '.pax-accept-chat', function() {
-                const sessionId = $(this).data('session-id');
-                self.acceptSession(sessionId);
-            });
-
-            // Decline session
-            $(document).on('click', '.pax-decline-chat', function() {
-                const sessionId = $(this).data('session-id');
-                if (confirm(window.paxLiveAgent.strings.confirmDecline)) {
-                    self.declineSession(sessionId);
-                }
-            });
-
-            // Close session
-            $(document).on('click', '.pax-close-chat', function() {
-                const sessionId = $(this).data('session-id');
-                if (confirm(window.paxLiveAgent.strings.confirmClose)) {
-                    self.closeSession(sessionId);
-                }
-            });
-
-            // Convert to ticket
-            $(document).on('click', '.pax-convert-ticket', function() {
-                const sessionId = $(this).data('session-id');
-                self.convertToTicket(sessionId);
-            });
-
-            // Export chat
-            $(document).on('click', '.pax-export-chat', function() {
-                const sessionId = $(this).data('session-id');
-                self.exportChat(sessionId);
-            });
-
-            // Send message
-            $('#pax-chat-form').on('submit', function(e) {
-                e.preventDefault();
-                self.sendMessage();
-            });
-
-            // Typing indicator
-            $('#pax-message-input').on('input', function() {
-                self.handleTyping();
-            });
-
-            // Auto-resize textarea
-            $('#pax-message-input').on('input', function() {
-                this.style.height = 'auto';
-                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-            });
-
-            // File upload
-            $('.pax-attach-button').on('click', function() {
-                $('#pax-file-input').click();
-            });
-
-            $('#pax-file-input').on('change', function() {
-                if (this.files.length > 0) {
-                    self.uploadFile(this.files[0]);
-                }
-            });
-
-            // Emoji button (placeholder)
-            $('.pax-emoji-button').on('click', function() {
-                // Future: emoji picker
-                alert('Emoji picker coming soon!');
-            });
-        }
-
-        startPolling() {
-            const self = this;
-            
-            this.pollTimer = setInterval(function() {
-                self.pollUpdates();
-                self.refreshSessionsList();
-            }, this.pollInterval);
-
-            // Initial poll
-            if (this.sessionId) {
-                this.pollUpdates();
+            if (this.elements.sendButton) {
+                this.elements.sendButton.addEventListener('click', () => {
+                    this.sendMessage();
+                });
             }
-        }
 
-        async pollUpdates() {
-            if (!this.sessionId) return;
-
-            try {
-                const url = new URL(`${window.paxLiveAgent.restUrl}/liveagent/status/poll`);
-                url.searchParams.append('session_id', this.sessionId);
-                if (this.lastMessageId) {
-                    url.searchParams.append('last_message_id', this.lastMessageId);
-                }
-                url.searchParams.append('_t', Date.now()); // Cache buster
-
-                const response = await fetch(url, {
-                    headers: {
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
+            if (this.elements.input) {
+                this.elements.input.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        this.sendMessage();
                     }
                 });
 
-                const data = await response.json();
-
-                if (data.success && data.has_updates) {
-                    this.handleUpdates(data);
-                }
-
-                if (data.last_message_id) {
-                    this.lastMessageId = data.last_message_id;
-                }
-
-                this.lastUpdate = data.last_activity || new Date().toISOString();
-            } catch (error) {
-                console.error('Poll error:', error);
+                this.elements.input.addEventListener('input', () => {
+                    this.autoResizeInput();
+                    this.emitTyping(true);
+                });
             }
-        }
 
-        handleUpdates(data) {
-            // New messages
-            if (data.new_messages && data.new_messages.length > 0) {
-                data.new_messages.forEach(msg => {
-                    this.appendMessage(msg);
-                    if (msg && msg.id) {
-                        this.lastMessageId = msg.id;
+            if (this.elements.attachButton && this.elements.fileInput) {
+                this.elements.attachButton.addEventListener('click', () => {
+                    this.elements.fileInput.click();
+                });
+
+                this.elements.fileInput.addEventListener('change', (event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                        this.uploadAttachment(file);
                     }
+                    this.elements.fileInput.value = '';
                 });
-                this.playNotificationSound();
-                this.showToast(window.paxLiveAgent.strings.newMessage);
-                this.markMessagesRead();
             }
 
-            // Typing indicator
-            const typingState = data.typing || {};
-            if (typingState.user) {
-                this.showTypingIndicator();
-            } else {
-                this.hideTypingIndicator();
-            }
-
-            // Session status change
-            if (data.session_status === 'closed') {
-                this.showToast(window.paxLiveAgent.strings.sessionClosed);
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
+            if (this.elements.pingButton) {
+                this.elements.pingButton.addEventListener('click', () => this.pingRest());
             }
         }
 
-        async acceptSession(sessionId) {
+        renderDiagnostics() {
+            if (this.elements.restLabel && this.config.diagnostics?.restBase) {
+                this.elements.restLabel.textContent = this.config.diagnostics.restBase;
+            }
+        }
+
+        switchTab(tab) {
+            if (this.state.selectedTab === tab) {
+                return;
+            }
+
+            this.state.selectedTab = tab;
+            this.elements.tabButtons.forEach((button) => {
+                const isActive = button.dataset.tab === tab;
+                button.classList.toggle('active', isActive);
+                button.setAttribute('aria-selected', String(isActive));
+            });
+
+            Object.entries(this.elements.sessionLists).forEach(([key, list]) => {
+                if (key === tab) {
+                    list.removeAttribute('hidden');
+                    list.classList.add('active');
+                } else {
+                    list.setAttribute('hidden', 'hidden');
+                    list.classList.remove('active');
+                }
+            });
+        }
+
+        startSessionPolling() {
+            if (this.state.polling.sessions) {
+                clearInterval(this.state.polling.sessions);
+            }
+            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 4000);
+        }
+
+        startMessagePolling() {
+            if (this.state.polling.messages) {
+                clearInterval(this.state.polling.messages);
+            }
+            if (!this.state.selectedSessionId) {
+                return;
+            }
+            this.state.polling.messages = window.setInterval(() => this.fetchMessages(true), 2000);
+        }
+
+        async fetchSessions(initial = false) {
             try {
-                console.log('[PAX Live Agent] Accepting session:', sessionId);
-                
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/accept`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: sessionId,
-                        agent_id: window.paxLiveAgent.agentId
-                    })
+                const params = new URLSearchParams({
+                    limit: '30',
+                    recent_limit: '20',
                 });
 
-                console.log('[PAX Live Agent] Response status:', response.status);
+                const response = await this.request(`${REST_ROUTES.sessions}?${params.toString()}`, {
+                    method: 'GET'
+                });
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('[PAX Live Agent] HTTP error:', response.status, errorText);
-                    alert(`Failed to accept session: HTTP ${response.status}`);
+                if (!response.success) {
                     return;
                 }
 
-                const data = await response.json();
-                console.log('[PAX Live Agent] Response data:', data);
+                this.state.sessions.pending = response.pending || [];
+                this.state.sessions.active = response.active || [];
+                this.state.sessions.recent = response.recent || [];
 
-                if (data.success) {
-                    console.log('[PAX Live Agent] Session accepted successfully');
-                    location.reload();
-                } else {
-                    const errorMsg = data.message || 'Unknown error';
-                    console.error('[PAX Live Agent] Accept failed:', errorMsg);
-                    alert(`Failed to accept session: ${errorMsg}`);
+                this.updateSessionLists();
+
+                if (initial && this.state.sessions.pending.length) {
+                    this.loadSession(this.state.sessions.pending[0].id, 'pending');
                 }
             } catch (error) {
-                console.error('[PAX Live Agent] Accept error:', error);
-                alert(`Error accepting session: ${error.message}`);
+                console.error('LiveAgentCenter: failed to fetch sessions', error);
+            }
+        }
+
+        updateSessionLists() {
+            ['pending', 'active', 'recent'].forEach((status) => {
+                const list = this.elements.sessionLists[status];
+                if (!list) {
+                    return;
+                }
+
+                list.querySelectorAll('.pax-session-card').forEach((card) => card.remove());
+
+                const sessions = this.state.sessions[status] || [];
+                const emptyState = list.querySelector('[data-empty]');
+                if (emptyState) {
+                    emptyState.hidden = sessions.length > 0;
+                }
+
+                const fragment = document.createDocumentFragment();
+                sessions.forEach((session) => {
+                    fragment.appendChild(this.createSessionCard(session, status));
+                });
+
+                list.appendChild(fragment);
+            });
+
+            if (this.elements.counters.pending) {
+                this.elements.counters.pending.textContent = this.state.sessions.pending.length;
+            }
+            if (this.elements.counters.active) {
+                this.elements.counters.active.textContent = this.state.sessions.active.length;
+            }
+
+            if (this.state.selectedSessionId) {
+                this.highlightActiveCard(this.state.selectedSessionId);
+            }
+        }
+
+        createSessionCard(session, status) {
+            const card = document.createElement('article');
+            card.className = 'pax-session-card';
+            card.dataset.sessionId = session.id;
+            card.dataset.sessionStatus = status;
+
+            if (session.id === this.state.selectedSessionId) {
+                card.classList.add('active');
+            }
+
+            const avatar = document.createElement('div');
+            avatar.className = 'pax-session-card-avatar';
+            avatar.innerHTML = session.avatar || `<span class="dashicons dashicons-admin-users"></span>`;
+
+            const statusDot = document.createElement('span');
+            statusDot.className = 'pax-session-card-status';
+            statusDot.dataset.status = session.status;
+            avatar.appendChild(statusDot);
+
+            const header = document.createElement('div');
+            header.className = 'pax-session-card-header';
+            header.appendChild(avatar);
+
+            const headerText = document.createElement('div');
+            const title = document.createElement('div');
+            title.className = 'pax-session-card-title';
+            title.textContent = session.user_name || this.config.strings?.unknownUser || 'Guest';
+            headerText.appendChild(title);
+
+            const subtitle = document.createElement('div');
+            subtitle.className = 'pax-session-card-subtitle';
+            if (session.page_url) {
+                let label = session.page_url;
+                try {
+                    const parsed = new URL(session.page_url, window.location.origin);
+                    label = parsed.pathname || parsed.href;
+                } catch (error) {
+                    // Keep original label
+                }
+                subtitle.appendChild(document.createTextNode(label));
+                subtitle.appendChild(document.createElement('span')).textContent = '•';
+            }
+            subtitle.appendChild(document.createTextNode(this.formatRelativeTime(session.last_activity)));
+            headerText.appendChild(subtitle);
+            header.appendChild(headerText);
+            card.appendChild(header);
+
+            if (session.last_message?.excerpt) {
+                const preview = document.createElement('div');
+                preview.className = 'pax-session-card-subtitle';
+                preview.textContent = session.last_message.excerpt;
+                card.appendChild(preview);
+            }
+
+            const footer = document.createElement('div');
+            footer.className = 'pax-session-card-footer';
+
+            const badges = document.createElement('div');
+            badges.className = 'pax-session-badges';
+            if (session.unread_count && status !== 'recent') {
+                const badge = document.createElement('span');
+                badge.className = 'pax-chip';
+                badge.textContent = `${session.unread_count} ${this.config.strings?.unread || 'Unread'}`;
+                badges.appendChild(badge);
+            }
+
+            if (status === 'active') {
+                const badge = document.createElement('span');
+                badge.className = 'pax-chip pax-chip-secondary';
+                badge.textContent = this.config.strings?.live || 'Live';
+                badges.appendChild(badge);
+            }
+
+            footer.appendChild(badges);
+
+            const timestamp = document.createElement('span');
+            timestamp.textContent = this.formatAbsoluteTime(session.last_activity);
+            footer.appendChild(timestamp);
+
+            card.appendChild(footer);
+
+            if (status === 'pending') {
+                const actions = document.createElement('div');
+                actions.className = 'pax-session-card-actions';
+
+                const accept = document.createElement('button');
+                accept.className = 'button button-primary';
+                accept.dataset.action = 'accept';
+                accept.innerHTML = `<span class="dashicons dashicons-yes"></span>${this.config.strings?.accept || 'Accept'}`;
+                actions.appendChild(accept);
+
+                const decline = document.createElement('button');
+                decline.className = 'button';
+                decline.dataset.action = 'decline';
+                decline.innerHTML = `<span class="dashicons dashicons-no-alt"></span>${this.config.strings?.decline || 'Decline'}`;
+                actions.appendChild(decline);
+
+                card.appendChild(actions);
+            }
+
+            return card;
+        }
+
+        formatRelativeTime(timestamp) {
+            if (!timestamp) {
+                return '';
+            }
+            const date = new Date(timestamp.replace(' ', 'T'));
+            const diff = (Date.now() - date.getTime()) / 1000;
+            if (diff < 60) {
+                return this.config.strings?.justNow || 'Just now';
+            }
+            if (diff < 3600) {
+                const minutes = Math.floor(diff / 60);
+                return `${minutes}m ${this.config.strings?.ago || 'ago'}`;
+            }
+            if (diff < 86400) {
+                const hours = Math.floor(diff / 3600);
+                return `${hours}h ${this.config.strings?.ago || 'ago'}`;
+            }
+            const days = Math.floor(diff / 86400);
+            return `${days}d ${this.config.strings?.ago || 'ago'}`;
+        }
+
+        formatAbsoluteTime(timestamp) {
+            if (!timestamp) {
+                return '';
+            }
+            const date = new Date(timestamp.replace(' ', 'T'));
+            return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        }
+
+        async loadSession(sessionId, status) {
+            if (!sessionId) {
+                return;
+            }
+
+            if (this.state.polling.messages) {
+                clearInterval(this.state.polling.messages);
+                this.state.polling.messages = null;
+            }
+
+            this.state.selectedSessionId = sessionId;
+            this.state.selectedSessionStatus = status;
+            this.state.lastMessageId = null;
+
+            this.highlightActiveCard(sessionId);
+            this.elements.emptyState.hidden = true;
+            this.elements.panel.hidden = false;
+            this.elements.messages.innerHTML = '';
+            this.elements.tags.innerHTML = '';
+            this.elements.actionBar.innerHTML = '';
+            this.elements.typing.hidden = true;
+            this.elements.input.value = '';
+
+            this.autoResizeInput();
+
+            let summary = this.findSessionSummary(sessionId);
+
+            if (!summary) {
+                try {
+                    const response = await this.request(`${REST_ROUTES.session}${sessionId}`, { method: 'GET' });
+                    if (response.success) {
+                        summary = response.session;
+                    }
+                } catch (error) {
+                    console.error('LiveAgentCenter: failed to load session', error);
+                }
+            }
+
+            if (summary) {
+                this.renderSessionHeader(summary);
+            }
+
+            await this.fetchMessages(false);
+            this.startMessagePolling();
+            this.markMessagesRead();
+        }
+
+        highlightActiveCard(sessionId) {
+            const cards = document.querySelectorAll('.pax-session-card');
+            cards.forEach((card) => {
+                card.classList.toggle('active', parseInt(card.dataset.sessionId, 10) === sessionId);
+            });
+        }
+
+        findSessionSummary(sessionId) {
+            const allSessions = [
+                ...this.state.sessions.pending,
+                ...this.state.sessions.active,
+                ...this.state.sessions.recent
+            ];
+            return allSessions.find((session) => session.id === sessionId);
+        }
+
+        renderSessionHeader(session) {
+            if (this.elements.customerName) {
+                this.elements.customerName.textContent = session.user_name || this.config.strings?.unknownUser || 'Guest';
+            }
+
+            if (this.elements.sessionMeta) {
+                const parts = [];
+                if (session.user_email) {
+                    parts.push(session.user_email);
+                }
+                if (session.user_ip) {
+                    parts.push(session.user_ip);
+                }
+                this.elements.sessionMeta.textContent = parts.join(' • ');
+            }
+
+            if (this.elements.pageUrl) {
+                if (session.page_url) {
+                    this.elements.pageUrl.textContent = session.page_url;
+                    this.elements.pageUrl.href = session.page_url;
+                    this.elements.pageUrl.hidden = false;
+                } else {
+                    this.elements.pageUrl.hidden = true;
+                }
+            }
+
+            if (this.elements.avatar) {
+                if (session.avatar) {
+                    this.elements.avatar.innerHTML = session.avatar;
+                } else {
+                    this.elements.avatar.textContent = (session.user_name || 'G').charAt(0).toUpperCase();
+                }
+            }
+
+            this.renderActionButtons(session);
+            this.renderTags(session);
+
+            if (this.elements.composer) {
+                const isActive = session.status === 'active';
+                this.elements.composer.hidden = !isActive;
+
+                if (this.elements.input) {
+                    this.elements.input.disabled = !isActive;
+                    this.elements.input.placeholder = isActive
+                        ? (this.config.strings?.composerHint || 'Type a reply…')
+                        : session.status === 'pending'
+                            ? (this.config.strings?.acceptPrompt || 'Accept this chat to reply.')
+                            : (this.config.strings?.closedMessage || 'This session is closed.');
+                }
+
+                if (this.elements.sendButton) {
+                    this.elements.sendButton.disabled = !isActive;
+                    this.elements.sendButton.classList.toggle('button-disabled', !isActive);
+                }
+            }
+
+            if (this.elements.messages && !this.elements.messages.querySelector('.pax-message') && session.status !== 'active') {
+                this.elements.messages.innerHTML = '';
+                const placeholder = document.createElement('div');
+                placeholder.className = 'pax-chat-placeholder pax-chat-placeholder-inline';
+                const icon = document.createElement('span');
+                icon.className = 'dashicons dashicons-info';
+                placeholder.appendChild(icon);
+                const text = document.createElement('p');
+                text.textContent = session.status === 'pending'
+                    ? (this.config.strings?.acceptPrompt || 'Accept this chat to reply.')
+                    : (this.config.strings?.closedMessage || 'This session is closed.');
+                placeholder.appendChild(text);
+                this.elements.messages.appendChild(placeholder);
+            }
+        }
+
+        renderActionButtons(session) {
+            if (!this.elements.actionBar) {
+                return;
+            }
+
+            this.elements.actionBar.innerHTML = '';
+
+            if (session.status === 'pending') {
+                const accept = this.createHeaderButton('button button-primary', this.config.strings?.accept || 'Accept', 'dashicons-yes');
+                accept.addEventListener('click', () => this.acceptSession(session.id));
+
+                const decline = this.createHeaderButton('button', this.config.strings?.decline || 'Decline', 'dashicons-no-alt');
+                decline.addEventListener('click', () => this.declineSession(session.id));
+
+                this.elements.actionBar.append(accept, decline);
+            } else if (session.status === 'active') {
+                const close = this.createHeaderButton('button button-secondary', this.config.strings?.close || 'End Session', 'dashicons-no-alt');
+                close.addEventListener('click', () => this.closeSession(session.id));
+                this.elements.actionBar.append(close);
+            }
+        }
+
+        renderTags(session) {
+            if (!this.elements.tags) {
+                return;
+            }
+            this.elements.tags.innerHTML = '';
+
+            const tags = [];
+            tags.push({
+                label: session.status === 'active' ? (this.config.strings?.live || 'Live') : session.status.toUpperCase(),
+                variant: session.status === 'active' ? 'secondary' : 'primary'
+            });
+
+            if (session.unread_count) {
+                tags.push({
+                    label: `${session.unread_count} ${this.config.strings?.unread || 'Unread'}`,
+                    variant: 'primary'
+                });
+            }
+
+            tags.forEach((tag) => {
+                const pill = document.createElement('span');
+                pill.className = `pax-chip${tag.variant === 'secondary' ? ' pax-chip-secondary' : ''}`;
+                pill.textContent = tag.label;
+                this.elements.tags.appendChild(pill);
+            });
+        }
+
+        createHeaderButton(className, label, icon) {
+            const button = document.createElement('button');
+            button.className = className;
+            button.innerHTML = `<span class="dashicons ${icon}"></span>${label}`;
+            return button;
+        }
+
+        async fetchMessages(incremental = false) {
+            if (!this.state.selectedSessionId) {
+                return;
+            }
+
+            const params = new URLSearchParams({
+                session_id: String(this.state.selectedSessionId)
+            });
+
+            if (incremental && this.state.lastMessageId) {
+                params.set('after', this.state.lastMessageId);
+            }
+
+            try {
+                const response = await this.request(`${REST_ROUTES.messages}?${params.toString()}`, {
+                    method: 'GET'
+                });
+
+                if (!response.success) {
+                    return;
+                }
+
+                if (response.session) {
+                    this.renderSessionHeader(response.session);
+                }
+
+                const messages = response.messages || [];
+
+                if (!incremental) {
+                    this.renderMessages(messages, true);
+                } else if (messages.length) {
+                    this.renderMessages(messages, false);
+
+                    const containsUserMessage = messages.some((msg) => msg.sender === 'user');
+                    if (containsUserMessage && response.session?.status === 'active') {
+                        this.notify();
+                        this.markMessagesRead();
+                    }
+                }
+
+                if (response.last_id) {
+                    this.state.lastMessageId = response.last_id;
+                }
+
+                if (response.typing) {
+                    this.toggleTyping(response.typing.user);
+                }
+
+                if (!incremental) {
+                    this.scrollToBottom(true);
+                }
+            } catch (error) {
+                console.error('LiveAgentCenter: failed to fetch messages', error);
+            }
+        }
+
+        renderMessages(messages, replace) {
+            if (!this.elements.messages) {
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            messages.forEach((message) => {
+                fragment.appendChild(this.createMessageBubble(message));
+            });
+
+            if (replace) {
+                this.elements.messages.innerHTML = '';
+                this.elements.messages.appendChild(fragment);
+            } else {
+                this.elements.messages.appendChild(fragment);
+            }
+
+            this.scrollToBottom();
+        }
+
+        createMessageBubble(message) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pax-message';
+            wrapper.classList.add(
+                message.sender === 'agent' ? 'pax-message-agent'
+                    : message.sender === 'system' ? 'pax-message-system'
+                        : 'pax-message-user'
+            );
+
+            const bubble = document.createElement('div');
+            bubble.className = 'pax-message-bubble';
+
+            const content = document.createElement('div');
+            content.className = 'pax-message-content';
+            content.textContent = message.message || '';
+            bubble.appendChild(content);
+
+            if (message.attachment) {
+                const attachment = document.createElement('div');
+                attachment.className = 'pax-message-attachment';
+                attachment.innerHTML = `<span class="dashicons dashicons-admin-page"></span>`;
+                const link = document.createElement('a');
+                link.href = message.attachment.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent = message.attachment.filename || message.attachment.url;
+                attachment.appendChild(link);
+                bubble.appendChild(attachment);
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'pax-message-meta';
+            const time = document.createElement('span');
+            time.textContent = this.formatAbsoluteTime(message.timestamp);
+            meta.appendChild(time);
+
+            if (message.sender === 'agent' && message.read) {
+                const read = document.createElement('span');
+                read.className = 'pax-message-read';
+                read.innerHTML = `<span class="dashicons dashicons-yes"></span>${this.config.strings?.read || 'Read'}`;
+                meta.appendChild(read);
+            }
+
+            bubble.appendChild(meta);
+            wrapper.appendChild(bubble);
+            return wrapper;
+        }
+
+        async markMessagesRead() {
+            if (!REST_ROUTES.markRead || !this.state.selectedSessionId) {
+                return;
+            }
+            try {
+                await this.request(REST_ROUTES.markRead, {
+                    method: 'POST',
+                    body: {
+                        session_id: this.state.selectedSessionId,
+                        reader_type: 'agent'
+                    }
+                });
+            } catch (error) {
+                // Silently fail
+            }
+        }
+
+        scrollToBottom(force) {
+            if (!this.elements.messages) {
+                return;
+            }
+            if (force || this.isScrolledToBottom()) {
+                this.elements.messages.scrollTo({
+                    top: this.elements.messages.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        isScrolledToBottom() {
+            if (!this.elements.messages) {
+                return false;
+            }
+            const { scrollTop, scrollHeight, clientHeight } = this.elements.messages;
+            return scrollHeight - scrollTop - clientHeight < 48;
+        }
+
+        autoResizeInput() {
+            if (!this.elements.input) {
+                return;
+            }
+            this.elements.input.style.height = 'auto';
+            this.elements.input.style.height = `${Math.min(this.elements.input.scrollHeight, 160)}px`;
+        }
+
+        async acceptSession(sessionId, card) {
+            if (!sessionId) {
+                return;
+            }
+            if (card) {
+                card.classList.add('pax-session-card--processing');
+            }
+            try {
+                await this.request(REST_ROUTES.accept, {
+                    method: 'POST',
+                    body: { session_id: sessionId }
+                });
+                this.fetchSessions();
+                this.loadSession(sessionId, 'active');
+            } catch (error) {
+                console.error('LiveAgentCenter: accept failed', error);
+            } finally {
+                if (card) {
+                    card.classList.remove('pax-session-card--processing');
+                }
             }
         }
 
         async declineSession(sessionId) {
+            if (!sessionId) {
+                return;
+            }
+            const confirmMessage = this.config.strings?.confirmDecline || 'Decline this chat request?';
+            if (!window.confirm(confirmMessage)) {
+                return;
+            }
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/decline`, {
+                await this.request(REST_ROUTES.decline, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: sessionId
-                    })
+                    body: { session_id: sessionId }
                 });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Failed to decline session');
+                this.fetchSessions();
+                if (this.state.selectedSessionId === sessionId) {
+                    this.state.selectedSessionId = null;
+                    this.elements.panel.hidden = true;
+                    this.elements.emptyState.hidden = false;
                 }
             } catch (error) {
-                console.error('Decline error:', error);
-                alert('Error declining session');
+                console.error('LiveAgentCenter: decline failed', error);
             }
         }
 
         async closeSession(sessionId) {
-            const notes = prompt('Add notes (optional):');
-            
-            try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/close`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: sessionId,
-                        notes: notes
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.showToast('Chat closed successfully');
-                    setTimeout(() => {
-                        location.reload();
-                    }, 1000);
-                } else {
-                    alert('Failed to close session');
-                }
-            } catch (error) {
-                console.error('Close error:', error);
-                alert('Error closing session');
-            }
-        }
-
-        async sendMessage() {
-            const $input = $('#pax-message-input');
-            const message = $input.val().trim();
-
-            if (!message) return;
-
-            try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/live/message`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: this.sessionId,
-                        message: message,
-                        sender: 'agent'
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.appendMessage(data.message);
-                    if (data.message?.id) {
-                        this.lastMessageId = data.message.id;
-                    }
-                    $input.val('').css('height', 'auto');
-                    this.sendTypingStatus(false);
-                } else {
-                    alert('Failed to send message');
-                }
-            } catch (error) {
-                console.error('Send error:', error);
-                alert('Error sending message');
-            }
-        }
-
-        handleTyping() {
-            if (!this.isTyping) {
-                this.isTyping = true;
-                this.sendTypingStatus(true);
-            }
-
-            clearTimeout(this.typingTimeout);
-            this.typingTimeout = setTimeout(() => {
-                this.isTyping = false;
-                this.sendTypingStatus(false);
-            }, 3000);
-        }
-
-        async sendTypingStatus(isTyping) {
-            try {
-                await fetch(`${window.paxLiveAgent.restUrl}/liveagent/status/typing`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: this.sessionId,
-                        is_typing: isTyping,
-                        sender: 'agent'
-                    })
-                });
-            } catch (error) {
-                console.error('Typing status error:', error);
-            }
-        }
-
-        async uploadFile(file) {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('session_id', this.sessionId);
-            formData.append('sender', 'agent');
-
-            try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/file/upload`, {
-                    method: 'POST',
-                    headers: {
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    // Send message with attachment
-                    const message = `[File: ${data.attachment.filename}]`;
-                    await this.sendMessageWithAttachment(message, data.attachment.id);
-                    $('#pax-file-input').val('');
-                } else {
-                    alert(data.message || 'Failed to upload file');
-                }
-            } catch (error) {
-                console.error('Upload error:', error);
-                alert('Error uploading file');
-            }
-        }
-
-        async sendMessageWithAttachment(message, attachmentId) {
-            try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/live/message`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: this.sessionId,
-                        message: message,
-                        sender: 'agent',
-                        attachment_id: attachmentId
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.appendMessage(data.message);
-                    if (data.message?.id) {
-                        this.lastMessageId = data.message.id;
-                    }
-                }
-            } catch (error) {
-                console.error('Send attachment error:', error);
-            }
-        }
-
-        async convertToTicket(sessionId) {
-            if (!confirm('Convert this chat to a ticket?')) return;
-
-            try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/convert-ticket`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: sessionId
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this.showToast('Converted to ticket #' + data.ticket_id);
-                } else {
-                    alert('Failed to convert to ticket');
-                }
-            } catch (error) {
-                console.error('Convert error:', error);
-                alert('Error converting to ticket');
-            }
-        }
-
-        async exportChat(sessionId) {
-            try {
-                const url = new URL(`${window.paxLiveAgent.restUrl}/liveagent/session/export`);
-                url.searchParams.append('session_id', sessionId);
-
-                const response = await fetch(url, {
-                    headers: {
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    }
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    const blob = new Blob([JSON.stringify(data.data, null, 2)], { type: 'application/json' });
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `chat-session-${sessionId}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                } else {
-                    alert('Failed to export chat');
-                }
-            } catch (error) {
-                console.error('Export error:', error);
-                alert('Error exporting chat');
-            }
-        }
-
-        appendMessage(message) {
-            const $container = $('#pax-chat-messages');
-            const isAgent = message.sender === 'agent';
-            const rawContent = message.message || message.text || '';
-            const parts = String(rawContent).split('\n');
-            const htmlContent = parts.map(part => this.escapeHtml(part)).join('<br>');
-            const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
-                minute: '2-digit' 
-            }) : '';
-
-            let attachmentMarkup = '';
-            if (message.attachment && message.attachment.url) {
-                const filename = message.attachment.filename || window.paxLiveAgent.strings.attachment || 'attachment';
-                attachmentMarkup = `
-                    <div class="pax-message-attachment">
-                        <span class="dashicons dashicons-paperclip" aria-hidden="true"></span>
-                        <a href="${this.escapeHtml(message.attachment.url)}" target="_blank" rel="noopener noreferrer">
-                            ${this.escapeHtml(filename)}
-                        </a>
-                    </div>
-                `;
-            }
-
-            const $message = $(`
-                <div class="pax-message ${isAgent ? 'pax-message-agent' : 'pax-message-user'}" data-message-id="${message.id || ''}">
-                    <div class="pax-message-bubble">
-                        <div class="pax-message-content">${htmlContent}${attachmentMarkup}</div>
-                        <div class="pax-message-meta">
-                            <span class="pax-message-time">${this.escapeHtml(time)}</span>
-                            ${isAgent && message.read ? '<span class="pax-message-read"><span class="dashicons dashicons-yes"></span></span>' : ''}
-                        </div>
-                    </div>
-                </div>
-            `);
-
-            $('.pax-chat-empty').remove();
-            $container.append($message);
-            this.scrollToBottom();
-        }
-
-        async markMessagesRead() {
-            if (!this.sessionId) return;
-
-            try {
-                await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/mark-read`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxLiveAgent.nonce
-                    },
-                    body: JSON.stringify({
-                        session_id: this.sessionId,
-                        reader_type: 'agent'
-                    })
-                });
-            } catch (error) {
-                console.error('Mark read error:', error);
-            }
-        }
-
-        showTypingIndicator() {
-            $('.pax-typing-indicator').show();
-            this.scrollToBottom();
-        }
-
-        hideTypingIndicator() {
-            $('.pax-typing-indicator').hide();
-        }
-
-        refreshSessions() {
-            location.reload();
-        }
-
-        refreshSessionsList() {
-            // Update unread counts without full reload
-            // Future enhancement
-        }
-
-        initAutoScroll() {
-            this.scrollToBottom();
-        }
-
-        scrollToBottom() {
-            const $container = $('#pax-chat-messages');
-            if ($container.length) {
-                $container.scrollTop($container[0].scrollHeight);
-            }
-        }
-
-        playNotificationSound() {
-            if (window.paxLiveAgent.soundEnabled) {
-                const audio = document.getElementById('pax-notification-sound');
-                if (audio) {
-                    audio.play().catch(e => console.log('Audio play failed:', e));
-                }
-            }
-        }
-
-        showToast(message) {
-            // Simple toast notification
-            const $toast = $(`
-                <div class="pax-toast-notification">
-                    ${this.escapeHtml(message)}
-                </div>
-            `);
-
-            $('body').append($toast);
-
-            setTimeout(() => {
-                $toast.addClass('show');
-            }, 100);
-
-            setTimeout(() => {
-                $toast.removeClass('show');
-                setTimeout(() => {
-                    $toast.remove();
-                }, 300);
-            }, 3000);
-        }
-
-        captureInitialLastMessage() {
-            if (this.lastMessageId) {
+            if (!sessionId) {
                 return;
             }
-            const $lastMessage = $('#pax-chat-messages .pax-message').last();
-            const initialId = $lastMessage.data('message-id');
-            if (initialId) {
-                this.lastMessageId = initialId;
+            const confirmMessage = this.config.strings?.confirmClose || 'End this chat session?';
+            if (!window.confirm(confirmMessage)) {
+                return;
+            }
+            try {
+                await this.request(REST_ROUTES.close, {
+                    method: 'POST',
+                    body: { session_id: sessionId }
+                });
+                this.fetchSessions();
+                this.loadSession(sessionId, 'recent');
+            } catch (error) {
+                console.error('LiveAgentCenter: close session failed', error);
             }
         }
 
-        escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        async sendMessage(extra = {}) {
+            if (this.state.isSending || !this.state.selectedSessionId) {
+                return;
+            }
+
+            const text = this.elements.input?.value.trim() || '';
+            if (!text && !extra.attachment_id) {
+                return;
+            }
+
+            this.state.isSending = true;
+
+            try {
+                const payload = {
+                    session_id: this.state.selectedSessionId,
+                    message: text,
+                    ...extra
+                };
+
+                const response = await this.request(REST_ROUTES.message, {
+                    method: 'POST',
+                    body: payload
+                });
+
+                if (response.success && response.message) {
+                    this.renderMessages([response.message], false);
+                    this.state.lastMessageId = response.message.id;
+                    this.elements.input.value = '';
+                    this.autoResizeInput();
+                    this.emitTyping(false);
+                }
+            } catch (error) {
+                console.error('LiveAgentCenter: send failed', error);
+                window.alert(this.config.strings?.messageFailed || 'Unable to send message. Please try again.');
+            } finally {
+                this.state.isSending = false;
+            }
+        }
+
+        async uploadAttachment(file) {
+            if (!REST_ROUTES.fileUpload || !this.state.selectedSessionId) {
+                return;
+            }
+
+            const uploadingLabel = this.config.strings?.uploading || 'Uploading…';
+            this.elements.sendButton.disabled = true;
+            this.elements.sendButton.querySelector('.pax-send-label').textContent = uploadingLabel;
+
+            try {
+                const formData = new FormData();
+                formData.append('session_id', this.state.selectedSessionId);
+                formData.append('sender', 'agent');
+                formData.append('file', file);
+
+                const response = await this.request(REST_ROUTES.fileUpload, {
+                    method: 'POST',
+                    body: formData,
+                    isForm: true
+                });
+
+                if (response.success && response.attachment) {
+                    await this.sendMessage({
+                        attachment_id: response.attachment.id,
+                        message: this.elements.input.value.trim()
+                    });
+                } else {
+                    throw new Error('Upload failed');
+                }
+            } catch (error) {
+                console.error('LiveAgentCenter: upload failed', error);
+                window.alert(this.config.strings?.uploadFailed || 'Upload failed. Please try again.');
+            } finally {
+                this.elements.sendButton.disabled = false;
+                this.elements.sendButton.querySelector('.pax-send-label').textContent = this.config.strings?.send || 'Send';
+            }
+        }
+
+        async pingRest() {
+            if (!this.elements.pingStatus) {
+                return;
+            }
+            const testing = this.config.strings?.pingTesting || 'Pinging…';
+            const success = this.config.strings?.pingSuccess || 'REST API reachable';
+            const errorText = this.config.strings?.pingError || 'Unable to reach REST API';
+
+            this.elements.pingStatus.textContent = testing;
+            try {
+                const response = await fetch(`${REST_ROUTES.status}?healthcheck=1`, {
+                    headers: { 'X-WP-Nonce': this.config.nonce || '' }
+                });
+                const data = await response.json();
+                if (data?.status === 'ok') {
+                    this.elements.pingStatus.textContent = success;
+                    this.elements.pingStatus.style.color = 'var(--pax-success)';
+                } else {
+                    throw new Error('Healthcheck failed');
+                }
+            } catch (error) {
+                this.elements.pingStatus.textContent = errorText;
+                this.elements.pingStatus.style.color = varColor('--pax-accent');
+            } finally {
+                window.setTimeout(() => {
+                    if (this.elements.pingStatus) {
+                        this.elements.pingStatus.textContent = '';
+                        this.elements.pingStatus.style.color = '';
+                    }
+                }, 4000);
+            }
+        }
+
+        toggleTyping(isTyping) {
+            if (!this.elements.typing) {
+                return;
+            }
+            this.elements.typing.hidden = !isTyping;
+        }
+
+        emitTyping(status) {
+            if (!REST_ROUTES.typing || !this.state.selectedSessionId) {
+                return;
+            }
+            if (this.state.typingTimeout) {
+                clearTimeout(this.state.typingTimeout);
+            }
+
+            if (status) {
+                this.request(REST_ROUTES.typing, {
+                    method: 'POST',
+                    body: {
+                        session_id: this.state.selectedSessionId,
+                        sender: 'agent',
+                        is_typing: true
+                    }
+                });
+                this.state.typingTimeout = window.setTimeout(() => {
+                    this.emitTyping(false);
+                }, 2000);
+            } else {
+                this.request(REST_ROUTES.typing, {
+                    method: 'POST',
+                    body: {
+                        session_id: this.state.selectedSessionId,
+                        sender: 'agent',
+                        is_typing: false
+                    }
+                });
+            }
+        }
+
+        notify() {
+            if (!this.state.audioEnabled || !this.elements.chime) {
+                return;
+            }
+            try {
+                this.elements.chime.currentTime = 0;
+                this.elements.chime.play().catch(() => {});
+            } catch (error) {
+                // ignore playback errors
+            }
+        }
+
+        async request(url, options) {
+            const headers = new Headers(options?.headers || {});
+            if (!options?.isForm) {
+                headers.set('Content-Type', 'application/json');
+            }
+            if (this.config.nonce) {
+                headers.set('X-WP-Nonce', this.config.nonce);
+            }
+
+            const fetchOptions = {
+                method: options?.method || 'GET',
+                headers
+            };
+
+            if (options?.body) {
+                fetchOptions.body = options.isForm ? options.body : JSON.stringify(options.body);
+            }
+
+            const response = await fetch(url, fetchOptions);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
         }
     }
 
-    // Initialize on document ready
-    $(document).ready(function() {
-        if (typeof window.paxLiveAgent !== 'undefined') {
-            window.liveAgentCenter = new LiveAgentCenter();
-            window.liveAgentCenter.init();
+    function ensureTrailingSlash(value) {
+        if (!value) {
+            return '';
         }
+        return value.endsWith('/') ? value : `${value}/`;
+    }
+
+    function varColor(token) {
+        if (!token.startsWith('--')) {
+            return token;
+        }
+        return getComputedStyle(document.documentElement).getPropertyValue(token) || token;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        new LiveAgentCenter(config);
     });
-
-    // Add toast notification styles
-    const toastStyles = `
-        <style>
-        .pax-toast-notification {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.9);
-            color: #fff;
-            padding: 16px 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            z-index: 10000;
-            opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s ease;
-        }
-        .pax-toast-notification.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        </style>
-    `;
-    $('head').append(toastStyles);
-
-})(jQuery);
+})();

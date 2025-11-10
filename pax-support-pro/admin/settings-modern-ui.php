@@ -8,12 +8,25 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-function pax_sup_render_modern_settings() {
+function pax_sup_render_modern_settings( $options = null, $stored_notice = null, $active_tab = 'general' ) {
     if ( ! current_user_can( pax_sup_get_console_capability() ) ) {
         return;
     }
 
-    $options = pax_sup_get_options();
+    if ( null === $options ) {
+        $options = pax_sup_get_options();
+    }
+
+    if ( null === $stored_notice ) {
+        $stored_notice = pax_sup_pull_admin_notice();
+    }
+
+    pax_sup_render_settings_tabs( $active_tab );
+
+    if ( ! empty( $stored_notice['message'] ) ) {
+        $notice_type = ! empty( $stored_notice['type'] ) ? $stored_notice['type'] : 'success';
+        pax_sup_admin_notice( $stored_notice['message'], $notice_type );
+    }
     ?>
     <div class="pax-modern-settings">
         <!-- Header -->

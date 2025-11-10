@@ -67,12 +67,9 @@ function pax_sup_rest_poll_updates( $request ) {
 
     $session_id = $request->get_param( 'session_id' );
     $last_message_id = $request->get_param( 'last_message_id' );
-    if ( empty( $last_message_id ) ) {
-        $last_message_id = $request->get_param( 'last_update' );
-    }
 
     if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-        error_log( sprintf( '[PAX Live Chat] Poll request - Session: %d, Last Message ID: %s', $session_id, $last_message_id ) );
+        error_log( sprintf( '[PAX Live Chat] Poll request - Session: %d, Last Message ID: %d', $session_id, $last_message_id ) );
     }
 
     $session = pax_sup_get_liveagent_session( $session_id );
@@ -85,37 +82,12 @@ function pax_sup_rest_poll_updates( $request ) {
 
     $has_updates = false;
     $new_messages = array();
-    $messages = array();
+
+    // Check for new messages by ID (more reliable than timestamp)
     if ( ! empty( $session['messages'] ) && is_array( $session['messages'] ) ) {
-        $messages = array_values( $session['messages'] );
-    }
-
-    if ( $messages ) {
-        if ( $last_message_id ) {
-            $collect = false;
-            foreach ( $messages as $message ) {
-                if ( ! isset( $message['id'] ) ) {
-                    continue;
-                }
-
-                if ( $collect ) {
-                    $new_messages[] = $message;
-                    continue;
-                }
-
-                if ( $message['id'] === $last_message_id ) {
-                    $collect = true;
-                }
-            }
-
-            if ( $collect && $new_messages ) {
-                $has_updates = true;
-            }
-        } else {
-            // No previous reference: send the most recent message for context.
-            $last_slice = array_slice( $messages, -1 );
-            if ( $last_slice ) {
-                $new_messages = $last_slice;
+        foreach ( $session['messages'] as $message ) {
+            if ( isset( $message['id'] ) && $message['id'] > $last_message_id ) {
+                $new_messages[] = $message;
                 $has_updates = true;
             }
         }
@@ -130,25 +102,14 @@ function pax_sup_rest_poll_updates( $request ) {
         $has_updates = true;
     }
 
-    $last_known_message = null;
-    if ( $messages ) {
-        $last_entry = end( $messages );
-        if ( isset( $last_entry['id'] ) ) {
-            $last_known_message = $last_entry['id'];
-        }
-    }
-
     $response = array(
         'success' => true,
         'has_updates' => $has_updates,
         'new_messages' => $new_messages,
-        'typing' => array(
-            'agent' => $agent_typing,
-            'user'  => $user_typing,
-        ),
+        'agent_typing' => $agent_typing,
+        'user_typing' => $user_typing,
         'session_status' => $session['status'],
         'last_activity' => $session['last_activity'],
-        'last_message_id' => $last_known_message,
         'server_time' => current_time( 'mysql' ),
     );
 

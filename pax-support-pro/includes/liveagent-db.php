@@ -31,6 +31,7 @@ function pax_sup_create_liveagent_table() {
         user_name varchar(255) DEFAULT NULL,
         user_email varchar(255) DEFAULT NULL,
         user_ip varchar(100) DEFAULT NULL,
+        page_url text DEFAULT NULL,
         session_notes text DEFAULT NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
@@ -54,7 +55,7 @@ function pax_sup_create_liveagent_table() {
 /**
  * Create a new live agent session
  */
-function pax_sup_create_liveagent_session( $user_id ) {
+function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     global $wpdb;
 
     $user = get_userdata( $user_id );
@@ -65,15 +66,19 @@ function pax_sup_create_liveagent_session( $user_id ) {
     // Get user IP (Cloudflare compatible)
     $user_ip = pax_sup_get_client_ip();
 
+    $args = is_array( $args ) ? $args : array();
+    $page_url = ! empty( $args['page_url'] ) ? esc_url_raw( $args['page_url'] ) : '';
+
     $data = array(
-        'user_id' => $user_id,
-        'status' => 'pending',
-        'started_at' => current_time( 'mysql' ),
+        'user_id'       => $user_id,
+        'status'        => 'pending',
+        'started_at'    => current_time( 'mysql' ),
         'last_activity' => current_time( 'mysql' ),
-        'user_name' => $user->display_name,
-        'user_email' => $user->user_email,
-        'user_ip' => $user_ip,
-        'messages' => wp_json_encode( array() ),
+        'user_name'     => $user->display_name,
+        'user_email'    => $user->user_email,
+        'user_ip'       => $user_ip,
+        'page_url'      => $page_url,
+        'messages'      => wp_json_encode( array() ),
     );
 
     $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
@@ -118,10 +123,53 @@ function pax_sup_get_liveagent_sessions_by_status( $status = 'pending' ) {
     global $wpdb;
 
     $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
+    if ( 'active' === $status ) {
+        $statuses = array( 'active', 'accepted' );
+        $placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+        $query = $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE status IN ($placeholders) ORDER BY last_activity DESC",
+            ...$statuses
+        );
+        $sessions = $wpdb->get_results( $query, ARRAY_A );
+    } else {
+        $sessions = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC",
+                $status
+            ),
+            ARRAY_A
+        );
+    }
+
+    foreach ( $sessions as &$session ) {
+        if ( ! empty( $session['messages'] ) ) {
+            $session['messages'] = json_decode( $session['messages'], true );
+            if ( ! is_array( $session['messages'] ) ) {
+                $session['messages'] = array();
+            }
+        }
+    }
+
+    return $sessions;
+}
+
+/**
+ * Get recently closed sessions.
+ *
+ * @param int $limit Number of sessions to fetch.
+ * @return array
+ */
+function pax_sup_get_recent_liveagent_sessions( $limit = 20 ) {
+    global $wpdb;
+
+    $limit = max( 1, min( 100, intval( $limit ) ) );
+    $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
+
     $sessions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC",
-            $status
+            "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC LIMIT %d",
+            'closed',
+            $limit
         ),
         ARRAY_A
     );

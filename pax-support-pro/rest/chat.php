@@ -171,26 +171,6 @@ function pax_sup_handle_ai_chat_request( WP_REST_Request $request ) {
     }
     $history = array_slice( $history, -6 );
 
-    $live_session = null;
-    if ( $session_id ) {
-        $live_session = pax_sup_get_liveagent_session( (int) $session_id );
-    }
-    if ( ! $live_session && $user_id > 0 ) {
-        $live_session = pax_sup_get_user_active_session( $user_id );
-    }
-    if ( $live_session && in_array( $live_session['status'], array( 'active', 'accepted' ), true ) ) {
-        return new WP_REST_Response(
-            array(
-                'reply'       => __( 'A live agent is connected. The assistant is paused so your agent can respond.', 'pax-support-pro' ),
-                'status'      => 'live_agent',
-                'language'    => $language,
-                'session'     => $live_session['id'],
-                'suggestions' => array(),
-            ),
-            200
-        );
-    }
-
     $key = $options['openai_key'];
     if ( defined( 'PXA_OPENAI_API_KEY' ) && PXA_OPENAI_API_KEY ) {
         $key = PXA_OPENAI_API_KEY;
