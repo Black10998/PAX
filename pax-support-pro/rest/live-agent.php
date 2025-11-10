@@ -87,8 +87,20 @@ function pax_live_agent_status( $request ) {
     global $wpdb;
     
     $session_id = $request->get_param( 'session_id' );
-    if ( ! $session_id ) {
-        return new WP_Error( 'missing_param', 'Session ID required', array( 'status' => 400 ) );
+    $ping       = $request->get_param( 'ping' );
+
+    if ( ! $session_id || $ping ) {
+        $table   = $wpdb->prefix . 'pax_liveagent_sessions';
+        $pending = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status = 'pending'" );
+        $active  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE status = 'active'" );
+
+        return rest_ensure_response( array(
+            'status'     => 'ok',
+            'pending'    => $pending,
+            'active'     => $active,
+            'timestamp'  => current_time( 'mysql' ),
+            'message'    => __( 'Connection successful', 'pax-support-pro' ),
+        ) );
     }
     
     $table = $wpdb->prefix . 'pax_liveagent_sessions';
@@ -120,9 +132,12 @@ function pax_live_agent_status( $request ) {
 
 function pax_live_agent_accept( $request ) {
     global $wpdb;
-    
-    check_ajax_referer( 'wp_rest', '_wpnonce' );
-    
+
+    $nonce = $request->get_header( 'x-wp-nonce' );
+    if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+        return new WP_Error( 'rest_forbidden', __( 'Invalid nonce.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
+
     $session_id = $request->get_param( 'session_id' );
     if ( ! $session_id ) {
         return new WP_Error( 'missing_param', 'Session ID required', array( 'status' => 400 ) );
@@ -131,32 +146,30 @@ function pax_live_agent_accept( $request ) {
     $agent_id = get_current_user_id();
     $table = $wpdb->prefix . 'pax_liveagent_sessions';
     
-    $updated = $wpdb->update(
-        $table,
-        array(
-            'status'        => 'accepted',
-            'agent_id'      => $agent_id,
-            'last_activity' => current_time( 'mysql' ),
-        ),
-        array( 'id' => $session_id ),
-        array( '%s', '%d', '%s' ),
-        array( '%d' )
-    );
+    $updated = pax_sup_update_liveagent_session_status( $session_id, 'active', $agent_id );
     
-    if ( $updated === false ) {
+    if ( ! $updated ) {
         return new WP_Error( 'db_error', 'Failed to accept session', array( 'status' => 500 ) );
     }
+
+    pax_sup_add_liveagent_message( $session_id, array(
+        'sender'  => 'system',
+        'message' => __( 'Agent has joined the chat', 'pax-support-pro' ),
+    ) );
     
     return rest_ensure_response( array(
         'success' => true,
-        'status'  => 'accepted',
+        'status'  => 'active',
     ) );
 }
 
 function pax_live_agent_decline( $request ) {
     global $wpdb;
     
-    check_ajax_referer( 'wp_rest', '_wpnonce' );
+    $nonce = $request->get_header( 'x-wp-nonce' );
+    if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+        return new WP_Error( 'rest_forbidden', __( 'Invalid nonce.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
     
     $session_id = $request->get_param( 'session_id' );
     if ( ! $session_id ) {
@@ -191,52 +204,56 @@ function pax_live_agent_message( $request ) {
     
     $session_id = $request->get_param( 'session_id' );
     $message = $request->get_param( 'message' );
+    $attachment_id = $request->get_param( 'attachment_id' );
     
     if ( ! $session_id || ! $message ) {
         return new WP_Error( 'missing_param', 'Session ID and message required', array( 'status' => 400 ) );
     }
     
-    $table = $wpdb->prefix . 'pax_liveagent_sessions';
-    $session = $wpdb->get_row( $wpdb->prepare(
-        "SELECT * FROM $table WHERE id = %d",
-        $session_id
-    ), ARRAY_A );
+    $session = pax_sup_get_liveagent_session( $session_id );
     
     if ( ! $session ) {
         return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
     }
-    
-    if ( $session['status'] !== 'accepted' ) {
-        return new WP_Error( 'invalid_status', 'Session not accepted', array( 'status' => 400 ) );
+
+    if ( ! in_array( $session['status'], array( 'accepted', 'active' ), true ) ) {
+        return new WP_Error( 'invalid_status', 'Session not active', array( 'status' => 400 ) );
+    }
+
+    $is_agent = current_user_can( 'manage_options' ) || current_user_can( 'manage_pax_chats' );
+    $current_user = get_current_user_id();
+
+    if ( ! $is_agent ) {
+        if ( (int) $session['user_id'] !== (int) $current_user ) {
+            return new WP_Error( 'forbidden', __( 'You are not allowed to post to this session.', 'pax-support-pro' ), array( 'status' => 403 ) );
+        }
     }
     
-    $messages = json_decode( $session['messages'], true ) ?: array();
-    
-    $new_message = array(
-        'id'        => uniqid( 'msg_', true ),
-        'text'      => sanitize_textarea_field( $message ),
-        'sender'    => 'user',
-        'timestamp' => current_time( 'mysql' ),
-        'user_id'   => get_current_user_id(),
+    $message_payload = array(
+        'sender'  => $is_agent ? 'agent' : 'user',
+        'message' => sanitize_textarea_field( $message ),
     );
     
-    $messages[] = $new_message;
-    
-    $updated = $wpdb->update(
-        $table,
-        array(
-            'messages'      => wp_json_encode( $messages ),
-            'last_activity' => current_time( 'mysql' ),
-        ),
-        array( 'id' => $session_id ),
-        array( '%s', '%s' ),
-        array( '%d' )
-    );
-    
-    if ( $updated === false ) {
+    if ( $attachment_id ) {
+        $attachment = get_post( (int) $attachment_id );
+        if ( $attachment && 'attachment' === $attachment->post_type ) {
+            $message_payload['attachment'] = array(
+                'id'       => (int) $attachment_id,
+                'url'      => wp_get_attachment_url( $attachment_id ),
+                'filename' => basename( get_attached_file( $attachment_id ) ),
+            );
+        }
+    }
+
+    $added = pax_sup_add_liveagent_message( $session_id, $message_payload );
+
+    if ( ! $added ) {
         return new WP_Error( 'db_error', 'Failed to save message', array( 'status' => 500 ) );
     }
-    
+
+    $session = pax_sup_get_liveagent_session( $session_id );
+    $new_message = end( $session['messages'] );
+
     return rest_ensure_response( array(
         'success' => true,
         'message' => $new_message,

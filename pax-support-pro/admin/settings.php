@@ -73,12 +73,41 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             PAX_SUP_VER
         );
         
+        wp_enqueue_style(
+            'pax-liveagent-settings',
+            PAX_SUP_URL . 'admin/css/live-agent-settings.css',
+            array(),
+            PAX_SUP_VER
+        );
+
         wp_enqueue_script(
             'pax-live-preview',
             PAX_SUP_URL . 'admin/live-preview/live-preview.js',
             array( 'jquery' ),
             PAX_SUP_VER,
             true
+        );
+
+        wp_enqueue_script(
+            'pax-liveagent-settings',
+            PAX_SUP_URL . 'admin/js/live-agent-settings.js',
+            array(),
+            PAX_SUP_VER,
+            true
+        );
+
+        wp_localize_script(
+            'pax-liveagent-settings',
+            'paxLiveAgentSettings',
+            array(
+                'restUrl' => untrailingslashit( rest_url( 'pax/v1' ) ),
+                'nonce'   => wp_create_nonce( 'wp_rest' ),
+                'strings' => array(
+                    'checking' => __( 'Testing connection…', 'pax-support-pro' ),
+                    'success'  => __( 'Connection successful', 'pax-support-pro' ),
+                    'error'    => __( 'Connection failed (%s)', 'pax-support-pro' ),
+                ),
+            )
         );
     }
 

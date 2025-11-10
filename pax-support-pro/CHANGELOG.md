@@ -5,6 +5,18 @@ All notable changes to PAX Support Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.6] - 2025-11-10
+
+### Added
+- Refreshed **Live Agent** settings with the new frontend design system, responsive dark/RTL support, and a diagnostics panel that surfaces REST status, domain, IP resolution, and one-click connection testing.
+
+### Changed
+- Admin replies now post through `/pax/v1/live/message`, and polling tracks message IDs to guarantee user chat delivery once an agent accepts a session.
+- Live agent dashboards surface attachment metadata inline and propagate message IDs for reliable refresh cycles.
+
+### Fixed
+- Automatically suspend the AI assistant whenever a live agent session is active so that human responses take precedence during handoffs.
+
 ## [5.4.8] - 2025-11-04
 
 ### 🔧 Critical Fix - Menu Buttons 100% Functional + Help Center Priority

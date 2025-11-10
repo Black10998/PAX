@@ -14,6 +14,7 @@
             this.lastUpdate = null;
             this.pollTimer = null;
             this.isTyping = false;
+            this.lastMessageId = window.paxLiveAgent?.lastMessageId || null;
         }
 
         init() {
@@ -21,6 +22,7 @@
             this.startPolling();
             this.initAutoScroll();
             this.startHeartbeat();
+            this.captureInitialLastMessage();
             
             if (this.sessionId) {
                 this.markMessagesRead();
@@ -157,8 +159,8 @@
             try {
                 const url = new URL(`${window.paxLiveAgent.restUrl}/liveagent/status/poll`);
                 url.searchParams.append('session_id', this.sessionId);
-                if (this.lastUpdate) {
-                    url.searchParams.append('last_update', this.lastUpdate);
+                if (this.lastMessageId) {
+                    url.searchParams.append('last_message_id', this.lastMessageId);
                 }
                 url.searchParams.append('_t', Date.now()); // Cache buster
 
@@ -174,6 +176,10 @@
                     this.handleUpdates(data);
                 }
 
+                if (data.last_message_id) {
+                    this.lastMessageId = data.last_message_id;
+                }
+
                 this.lastUpdate = data.last_activity || new Date().toISOString();
             } catch (error) {
                 console.error('Poll error:', error);
@@ -185,6 +191,9 @@
             if (data.new_messages && data.new_messages.length > 0) {
                 data.new_messages.forEach(msg => {
                     this.appendMessage(msg);
+                    if (msg && msg.id) {
+                        this.lastMessageId = msg.id;
+                    }
                 });
                 this.playNotificationSound();
                 this.showToast(window.paxLiveAgent.strings.newMessage);
@@ -192,7 +201,8 @@
             }
 
             // Typing indicator
-            if (data.typing.user) {
+            const typingState = data.typing || {};
+            if (typingState.user) {
                 this.showTypingIndicator();
             } else {
                 this.hideTypingIndicator();
@@ -314,7 +324,7 @@
             if (!message) return;
 
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/send`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}/live/message`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -331,6 +341,9 @@
 
                 if (data.success) {
                     this.appendMessage(data.message);
+                    if (data.message?.id) {
+                        this.lastMessageId = data.message.id;
+                    }
                     $input.val('').css('height', 'auto');
                     this.sendTypingStatus(false);
                 } else {
@@ -407,7 +420,7 @@
 
         async sendMessageWithAttachment(message, attachmentId) {
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/send`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}/live/message`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -425,6 +438,9 @@
 
                 if (data.success) {
                     this.appendMessage(data.message);
+                    if (data.message?.id) {
+                        this.lastMessageId = data.message.id;
+                    }
                 }
             } catch (error) {
                 console.error('Send attachment error:', error);
@@ -494,17 +510,33 @@
         appendMessage(message) {
             const $container = $('#pax-chat-messages');
             const isAgent = message.sender === 'agent';
-            const time = new Date(message.timestamp).toLocaleTimeString('en-US', { 
+            const rawContent = message.message || message.text || '';
+            const parts = String(rawContent).split('\n');
+            const htmlContent = parts.map(part => this.escapeHtml(part)).join('<br>');
+            const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString('en-US', { 
                 hour: 'numeric', 
                 minute: '2-digit' 
-            });
+            }) : '';
+
+            let attachmentMarkup = '';
+            if (message.attachment && message.attachment.url) {
+                const filename = message.attachment.filename || window.paxLiveAgent.strings.attachment || 'attachment';
+                attachmentMarkup = `
+                    <div class="pax-message-attachment">
+                        <span class="dashicons dashicons-paperclip" aria-hidden="true"></span>
+                        <a href="${this.escapeHtml(message.attachment.url)}" target="_blank" rel="noopener noreferrer">
+                            ${this.escapeHtml(filename)}
+                        </a>
+                    </div>
+                `;
+            }
 
             const $message = $(`
-                <div class="pax-message ${isAgent ? 'pax-message-agent' : 'pax-message-user'}">
+                <div class="pax-message ${isAgent ? 'pax-message-agent' : 'pax-message-user'}" data-message-id="${message.id || ''}">
                     <div class="pax-message-bubble">
-                        <div class="pax-message-content">${this.escapeHtml(message.message)}</div>
+                        <div class="pax-message-content">${htmlContent}${attachmentMarkup}</div>
                         <div class="pax-message-meta">
-                            <span class="pax-message-time">${time}</span>
+                            <span class="pax-message-time">${this.escapeHtml(time)}</span>
                             ${isAgent && message.read ? '<span class="pax-message-read"><span class="dashicons dashicons-yes"></span></span>' : ''}
                         </div>
                     </div>
@@ -594,6 +626,17 @@
                     $toast.remove();
                 }, 300);
             }, 3000);
+        }
+
+        captureInitialLastMessage() {
+            if (this.lastMessageId) {
+                return;
+            }
+            const $lastMessage = $('#pax-chat-messages .pax-message').last();
+            const initialId = $lastMessage.data('message-id');
+            if (initialId) {
+                this.lastMessageId = initialId;
+            }
         }
 
         escapeHtml(text) {

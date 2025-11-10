@@ -350,6 +350,36 @@
     word-wrap: break-word;
 }
 
+.pax-message-attachment {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+}
+
+.pax-message-attachment .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.pax-message-attachment a {
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.pax-message-attachment a:hover,
+.pax-message-attachment a:focus {
+    text-decoration: underline;
+}
+
 .pax-message-meta {
     display: flex;
     align-items: center;

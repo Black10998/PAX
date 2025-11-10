@@ -18,6 +18,7 @@ function pax_sup_render_live_agent_center_page() {
     }
 
     $options = pax_sup_get_options();
+    $settings = pax_sup_get_liveagent_settings();
     $enabled = ! empty( $options['live_agent_enabled'] );
 
     if ( ! $enabled ) {
@@ -46,6 +47,7 @@ function pax_sup_render_live_agent_center_page() {
     // Get selected session from query param
     $selected_session_id = isset( $_GET['session'] ) ? (int) $_GET['session'] : null;
     $selected_session = null;
+    $last_message_id = null;
 
     if ( $selected_session_id ) {
         $selected_session = pax_sup_get_liveagent_session( $selected_session_id );
@@ -53,6 +55,14 @@ function pax_sup_render_live_agent_center_page() {
         $selected_session = $active_sessions[0];
     } elseif ( ! empty( $pending_sessions ) ) {
         $selected_session = $pending_sessions[0];
+    }
+
+    if ( $selected_session && ! empty( $selected_session['messages'] ) && is_array( $selected_session['messages'] ) ) {
+        $last_message = end( $selected_session['messages'] );
+        if ( isset( $last_message['id'] ) ) {
+            $last_message_id = $last_message['id'];
+        }
+        reset( $selected_session['messages'] );
     }
 
     ?>
@@ -141,14 +151,16 @@ function pax_sup_render_live_agent_center_page() {
         nonce: '<?php echo esc_js( wp_create_nonce( 'wp_rest' ) ); ?>',
         agentId: <?php echo (int) $agent_id; ?>,
         selectedSessionId: <?php echo $selected_session ? (int) $selected_session['id'] : 'null'; ?>,
-        refreshInterval: 15000,
-        soundEnabled: <?php echo isset( $settings['sound_enabled'] ) && $settings['sound_enabled'] ? 'true' : 'false'; ?>,
+        refreshInterval: <?php echo max( 5, (int) $settings['poll_interval'] ) * 1000; ?>,
+        soundEnabled: <?php echo ! empty( $settings['sound_enabled'] ) ? 'true' : 'false'; ?>,
+        lastMessageId: <?php echo $last_message_id ? "'" . esc_js( $last_message_id ) . "'" : 'null'; ?>,
         strings: {
             newMessage: '<?php echo esc_js( __( 'New message received', 'pax-support-pro' ) ); ?>',
             newRequest: '<?php echo esc_js( __( 'New chat request', 'pax-support-pro' ) ); ?>',
             sessionClosed: '<?php echo esc_js( __( 'Chat session closed', 'pax-support-pro' ) ); ?>',
             confirmClose: '<?php echo esc_js( __( 'Are you sure you want to close this chat?', 'pax-support-pro' ) ); ?>',
             confirmDecline: '<?php echo esc_js( __( 'Are you sure you want to decline this request?', 'pax-support-pro' ) ); ?>',
+            attachment: '<?php echo esc_js( __( 'Attachment', 'pax-support-pro' ) ); ?>',
         }
     };
     </script>
@@ -161,6 +173,8 @@ function pax_sup_render_live_agent_center_page() {
 function pax_sup_render_session_item( $session, $selected_session ) {
     $is_selected = $selected_session && $selected_session['id'] === $session['id'];
     $unread_count = 0;
+    $last_message_preview = '';
+    $last_message_id = '';
 
     // Count unread messages
     if ( ! empty( $session['messages'] ) && is_array( $session['messages'] ) ) {
@@ -169,12 +183,22 @@ function pax_sup_render_session_item( $session, $selected_session ) {
                 $unread_count++;
             }
         }
+
+        $last_message = end( $session['messages'] );
+        if ( $last_message ) {
+            $last_message_preview = isset( $last_message['message'] ) ? $last_message['message'] : ( $last_message['text'] ?? '' );
+            if ( isset( $last_message['id'] ) ) {
+                $last_message_id = $last_message['id'];
+            }
+        }
+        reset( $session['messages'] );
     }
 
     $time_ago = human_time_diff( strtotime( $session['last_activity'] ), current_time( 'timestamp' ) );
     ?>
     <div class="pax-session-item <?php echo $is_selected ? 'active' : ''; ?>" 
-         data-session-id="<?php echo esc_attr( $session['id'] ); ?>">
+         data-session-id="<?php echo esc_attr( $session['id'] ); ?>"
+         data-last-message-id="<?php echo esc_attr( $last_message_id ); ?>">
         <div class="pax-session-avatar">
             <?php echo get_avatar( $session['user_id'], 40 ); ?>
             <span class="pax-session-status <?php echo esc_attr( $session['status'] ); ?>"></span>
@@ -185,10 +209,9 @@ function pax_sup_render_session_item( $session, $selected_session ) {
             </div>
             <div class="pax-session-preview">
                 <?php
-                if ( ! empty( $session['messages'] ) && is_array( $session['messages'] ) ) {
-                    $last_message = end( $session['messages'] );
-                    echo esc_html( wp_trim_words( $last_message['message'], 8 ) );
-                } else {
+                    if ( $last_message_preview ) {
+                        echo esc_html( wp_trim_words( $last_message_preview, 8 ) );
+                    } else {
                     esc_html_e( 'New chat request', 'pax-support-pro' );
                 }
                 ?>
@@ -335,17 +358,27 @@ function pax_sup_render_chat_area( $session, $agent_id ) {
  */
 function pax_sup_render_message_bubble( $message, $session, $agent_id ) {
     $is_agent = $message['sender'] === 'agent';
-    $sender_name = $is_agent ? __( 'You', 'pax-support-pro' ) : $session['user_name'];
-    $time = date( 'g:i A', strtotime( $message['timestamp'] ) );
+    $body = isset( $message['message'] ) ? $message['message'] : ( $message['text'] ?? '' );
+    $time = ! empty( $message['timestamp'] ) ? date( 'g:i A', strtotime( $message['timestamp'] ) ) : '';
+    $attachment = isset( $message['attachment'] ) ? $message['attachment'] : null;
+    $message_id = isset( $message['id'] ) ? $message['id'] : '';
     ?>
-    <div class="pax-message <?php echo $is_agent ? 'pax-message-agent' : 'pax-message-user'; ?>">
+    <div class="pax-message <?php echo $is_agent ? 'pax-message-agent' : 'pax-message-user'; ?>" data-message-id="<?php echo esc_attr( $message_id ); ?>">
         <div class="pax-message-bubble">
             <div class="pax-message-content">
-                <?php echo wp_kses_post( nl2br( $message['message'] ) ); ?>
+                <?php echo wp_kses_post( nl2br( esc_html( $body ) ) ); ?>
+                <?php if ( $attachment && ! empty( $attachment['url'] ) ) : ?>
+                    <div class="pax-message-attachment">
+                        <span class="dashicons dashicons-paperclip" aria-hidden="true"></span>
+                        <a href="<?php echo esc_url( $attachment['url'] ); ?>" target="_blank" rel="noopener noreferrer">
+                            <?php echo esc_html( $attachment['filename'] ?? __( 'Attachment', 'pax-support-pro' ) ); ?>
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
             <div class="pax-message-meta">
                 <span class="pax-message-time"><?php echo esc_html( $time ); ?></span>
-                <?php if ( $is_agent && $message['read'] ) : ?>
+                <?php if ( $is_agent && ! empty( $message['read'] ) ) : ?>
                     <span class="pax-message-read">
                         <span class="dashicons dashicons-yes"></span>
                     </span>
