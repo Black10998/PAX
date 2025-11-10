@@ -47,6 +47,9 @@ function pax_sup_enqueue_public_assets() {
     
     // v5.4.2: Add unified chat engine
     wp_enqueue_script( 'pax-unified-chat', PAX_SUP_URL . 'assets/js/pax-unified-chat.js', array( 'pax-support-pro' ), PAX_SUP_VER, true );
+    
+    // v5.8.5: Add live agent addon
+    wp_enqueue_script( 'pax-live-agent-addon', PAX_SUP_URL . 'assets/js/live-agent-addon.js', array( 'pax-unified-chat' ), PAX_SUP_VER, true );
 
     $position = $options['launcher_position'];
     $reaction_color = ! empty( $options['reaction_btn_color'] ) ? $options['reaction_btn_color'] : '#e53935';
@@ -165,6 +168,7 @@ function pax_sup_enqueue_public_assets() {
         'menuItems' => $menu_items,
         'menuIcons' => $menu_icons_map,
         'rest'    => array(
+            'base'     => esc_url_raw( rest_url( 'pax/v1/' ) ),
             'chat'     => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/chat' ) ),
             'ai'       => esc_url_raw( rest_url( 'pax-support/v1/ai-chat' ) ),
             'cooldown' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/ticket-cooldown' ) ),
@@ -235,6 +239,12 @@ function pax_sup_enqueue_public_assets() {
         'aiEnabled'  => ! empty( $options['ai_assistant_enabled'] ),
         'locale'     => determine_locale(),
         'siteLocale' => get_locale(),
+        'currentUser' => $current_user instanceof WP_User ? array(
+            'id'    => $current_user->ID,
+            'name'  => $current_user->display_name,
+            'email' => $current_user->user_email,
+        ) : null,
+        'siteUrl'    => esc_url_raw( get_site_url() ),
         'user'       => array(
             'name'  => $current_user instanceof WP_User ? $current_user->display_name : '',
             'email' => $current_user instanceof WP_User ? $current_user->user_email : '',
