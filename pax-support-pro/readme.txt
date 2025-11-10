@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 5.8.5
+Stable tag: 5.8.6
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -100,6 +100,16 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.8.6 - 2025-11-10 =
+* Added: Redesigned Live Agent settings screen with modern cards, toggles, and responsive layout
+* Added: Connection & Diagnostics panel with REST base URL copy helper, domain/IP resolution, and health check
+* Added: Dedicated Live Agent settings assets with targeted CSS and diagnostics JavaScript
+* Enhanced: Guaranteed message delivery by routing all admin replies through POST /pax/v1/live/message
+* Enhanced: Normalized session statuses so accepted sessions surface in both admin and frontend views
+* Enhanced: Live Agent addon safely disables AI during active human sessions and restores state afterward
+* Fixed: Admin console message rendering for attachments and ensured new endpoints use consistent REST URLs
+* Fixed: REST API healthcheck now returns status ok for diagnostics panel testing
 
 = 5.7.5 - 2025-11-05 =
 * Fixed: Removed remaining dark overlays from mode switcher, reply-to, and help center

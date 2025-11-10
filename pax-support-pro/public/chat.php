@@ -168,7 +168,7 @@ function pax_sup_enqueue_public_assets() {
         'menuItems' => $menu_items,
         'menuIcons' => $menu_icons_map,
         'rest'    => array(
-            'base'     => esc_url_raw( rest_url( 'pax/v1/' ) ),
+            'base'     => esc_url_raw( trailingslashit( rest_url( 'pax/v1' ) ) ),
             'chat'     => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/chat' ) ),
             'ai'       => esc_url_raw( rest_url( 'pax-support/v1/ai-chat' ) ),
             'cooldown' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/ticket-cooldown' ) ),

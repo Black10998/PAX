@@ -118,13 +118,23 @@ function pax_sup_get_liveagent_sessions_by_status( $status = 'pending' ) {
     global $wpdb;
 
     $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
-    $sessions = $wpdb->get_results(
-        $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC",
-            $status
-        ),
-        ARRAY_A
-    );
+    if ( 'active' === $status ) {
+        $statuses = array( 'active', 'accepted' );
+        $placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+        $query = $wpdb->prepare(
+            "SELECT * FROM $table_name WHERE status IN ($placeholders) ORDER BY last_activity DESC",
+            ...$statuses
+        );
+        $sessions = $wpdb->get_results( $query, ARRAY_A );
+    } else {
+        $sessions = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC",
+                $status
+            ),
+            ARRAY_A
+        );
+    }
 
     foreach ( $sessions as &$session ) {
         if ( ! empty( $session['messages'] ) ) {

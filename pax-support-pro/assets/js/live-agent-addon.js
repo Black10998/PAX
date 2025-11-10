@@ -28,6 +28,10 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         
         // Disable AI features
         this.disableAIFeatures();
+        this.aiWasEnabled = typeof window.paxSupportPro !== 'undefined' ? window.paxSupportPro.aiEnabled : undefined;
+        if (typeof window.paxSupportPro !== 'undefined') {
+            window.paxSupportPro.aiEnabled = false;
+        }
         
         // Get REST base and user data
         const restBase = window.paxSupportPro?.rest?.base || window.location.origin + '/wp-json/pax/v1/';
@@ -115,7 +119,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         
         this.sessions.liveagent.status = status;
         
-        if (status === 'accepted') {
+        if (status === 'accepted' || status === 'active') {
+            this.sessions.liveagent.status = 'accepted';
             this.stopLivePolling();
             this.showLiveBanner('connected');
             
@@ -130,7 +135,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             }
             
             this.saveState();
-        } else if (status === 'declined') {
+        } else if (status === 'declined' || status === 'closed') {
             this.stopLivePolling();
             this.showError('No agent available right now.');
             this.returnToAI();
@@ -165,6 +170,10 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         this.sessions.liveagent.sessionId = null;
         this.currentMode = 'assistant';
         this.hideLiveBanner();
+        if (typeof window.paxSupportPro !== 'undefined' && typeof this.aiWasEnabled !== 'undefined') {
+            window.paxSupportPro.aiEnabled = this.aiWasEnabled;
+        }
+        this.aiWasEnabled = undefined;
         this.enableAIFeatures();
         this.saveState();
         

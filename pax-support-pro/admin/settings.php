@@ -80,6 +80,40 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             PAX_SUP_VER,
             true
         );
+
+        $settings_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
+        if ( 'live-agent' === $settings_tab ) {
+            wp_enqueue_style(
+                'pax-live-agent-settings',
+                PAX_SUP_URL . 'admin/css/live-agent-settings.css',
+                array( 'pax-settings-modern' ),
+                PAX_SUP_VER
+            );
+
+            wp_enqueue_script(
+                'pax-live-agent-settings',
+                PAX_SUP_URL . 'admin/js/live-agent-settings.js',
+                array(),
+                PAX_SUP_VER,
+                true
+            );
+
+            wp_localize_script(
+                'pax-live-agent-settings',
+                'paxLiveAgentSettings',
+                array(
+                    'restBase'     => trailingslashit( rest_url( 'pax/v1' ) ),
+                    'testEndpoint' => rest_url( 'pax/v1/live/status' ),
+                    'nonce'        => wp_create_nonce( 'wp_rest' ),
+                    'strings'      => array(
+                        'testing' => __( 'Testing connection…', 'pax-support-pro' ),
+                        'success' => __( 'Connection successful!', 'pax-support-pro' ),
+                        'failure' => __( 'Connection failed. Please review your REST API configuration.', 'pax-support-pro' ),
+                        'copied'  => __( 'Copied!', 'pax-support-pro' ),
+                    ),
+                )
+            );
+        }
     }
 
     // Enqueue modern console UI assets
@@ -414,8 +448,62 @@ function pax_sup_admin_notice( $message, $type = 'success' ) {
     );
 }
 
+/**
+ * Render settings tab navigation.
+ *
+ * @param string $active_tab Active tab slug.
+ */
+function pax_sup_render_settings_tabs( $active_tab = 'general' ) {
+    $general_url    = admin_url( 'admin.php?page=pax-support-settings' );
+    $live_agent_url = add_query_arg(
+        array(
+            'page' => 'pax-support-settings',
+            'tab'  => 'live-agent',
+        ),
+        admin_url( 'admin.php' )
+    );
+
+    $tabs = array(
+        'general'    => array(
+            'label' => __( 'General', 'pax-support-pro' ),
+            'url'   => $general_url,
+            'icon'  => 'admin-generic',
+        ),
+        'live-agent' => array(
+            'label' => __( 'Live Agent', 'pax-support-pro' ),
+            'url'   => $live_agent_url,
+            'icon'  => 'format-chat',
+        ),
+    );
+
+    echo '<nav class="pax-settings-tabs" aria-label="' . esc_attr__( 'PAX Support settings tabs', 'pax-support-pro' ) . '">';
+    foreach ( $tabs as $slug => $tab ) {
+        $is_active = $active_tab === $slug;
+        printf(
+            '<a href="%1$s" class="pax-settings-tab %4$s" %5$s>'
+                . '<span class="dashicons dashicons-%3$s"></span>'
+                . '<span class="pax-settings-tab-label">%2$s</span>'
+            . '</a>',
+            esc_url( $tab['url'] ),
+            esc_html( $tab['label'] ),
+            esc_attr( $tab['icon'] ),
+            $is_active ? 'active' : '',
+            $is_active ? 'aria-current="page"' : ''
+        );
+    }
+    echo '</nav>';
+}
+
 function pax_sup_render_settings() {
     if ( ! current_user_can( pax_sup_get_console_capability() ) ) {
+        return;
+    }
+
+    $active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
+
+    if ( 'live-agent' === $active_tab ) {
+        require_once plugin_dir_path( __FILE__ ) . 'settings-live-agent.php';
+        pax_sup_render_live_agent_settings();
         return;
     }
 
@@ -534,7 +622,7 @@ function pax_sup_render_settings() {
     
     // Include modern UI rendering
     require_once plugin_dir_path( __FILE__ ) . 'settings-modern-ui.php';
-    pax_sup_render_modern_settings( $options, $stored_notice );
+    pax_sup_render_modern_settings( $options, $stored_notice, $active_tab );
 }
 
 /**

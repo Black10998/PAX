@@ -155,7 +155,7 @@
             if (!this.sessionId) return;
 
             try {
-                const url = new URL(`${window.paxLiveAgent.restUrl}/liveagent/status/poll`);
+                const url = new URL(`${window.paxLiveAgent.restUrl}liveagent/status/poll`);
                 url.searchParams.append('session_id', this.sessionId);
                 if (this.lastUpdate) {
                     url.searchParams.append('last_update', this.lastUpdate);
@@ -211,7 +211,7 @@
             try {
                 console.log('[PAX Live Agent] Accepting session:', sessionId);
                 
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/accept`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}liveagent/session/accept`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -251,7 +251,7 @@
 
         async declineSession(sessionId) {
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/decline`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}liveagent/session/decline`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -279,7 +279,7 @@
             const notes = prompt('Add notes (optional):');
             
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/close`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}liveagent/session/close`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -314,7 +314,7 @@
             if (!message) return;
 
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/send`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}live/message`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -357,7 +357,7 @@
 
         async sendTypingStatus(isTyping) {
             try {
-                await fetch(`${window.paxLiveAgent.restUrl}/liveagent/status/typing`, {
+                await fetch(`${window.paxLiveAgent.restUrl}liveagent/status/typing`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -381,7 +381,7 @@
             formData.append('sender', 'agent');
 
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/file/upload`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}liveagent/file/upload`, {
                     method: 'POST',
                     headers: {
                         'X-WP-Nonce': window.paxLiveAgent.nonce
@@ -407,7 +407,7 @@
 
         async sendMessageWithAttachment(message, attachmentId) {
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/send`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}live/message`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -435,7 +435,7 @@
             if (!confirm('Convert this chat to a ticket?')) return;
 
             try {
-                const response = await fetch(`${window.paxLiveAgent.restUrl}/liveagent/session/convert-ticket`, {
+                const response = await fetch(`${window.paxLiveAgent.restUrl}liveagent/session/convert-ticket`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -461,7 +461,7 @@
 
         async exportChat(sessionId) {
             try {
-                const url = new URL(`${window.paxLiveAgent.restUrl}/liveagent/session/export`);
+                const url = new URL(`${window.paxLiveAgent.restUrl}liveagent/session/export`);
                 url.searchParams.append('session_id', sessionId);
 
                 const response = await fetch(url, {
@@ -494,15 +494,30 @@
         appendMessage(message) {
             const $container = $('#pax-chat-messages');
             const isAgent = message.sender === 'agent';
-            const time = new Date(message.timestamp).toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
-                minute: '2-digit' 
+            const rawTimestamp = message.timestamp || new Date().toISOString();
+            const time = new Date(rawTimestamp).toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit'
             });
+            const body = typeof message.message !== 'undefined' ? message.message : (message.text || '');
+            let contentHtml = this.escapeHtml(body);
+
+            if (message.attachment && message.attachment.url) {
+                const attachmentName = message.attachment.filename ? this.escapeHtml(message.attachment.filename) : this.escapeHtml(message.attachment.url);
+                contentHtml += `
+                    <div class="pax-message-attachment">
+                        <a href="${this.escapeHtml(message.attachment.url)}" target="_blank" rel="noopener noreferrer">
+                            <span class="dashicons dashicons-admin-page"></span>
+                            ${attachmentName}
+                        </a>
+                    </div>
+                `;
+            }
 
             const $message = $(`
                 <div class="pax-message ${isAgent ? 'pax-message-agent' : 'pax-message-user'}">
                     <div class="pax-message-bubble">
-                        <div class="pax-message-content">${this.escapeHtml(message.message)}</div>
+                        <div class="pax-message-content">${contentHtml}</div>
                         <div class="pax-message-meta">
                             <span class="pax-message-time">${time}</span>
                             ${isAgent && message.read ? '<span class="pax-message-read"><span class="dashicons dashicons-yes"></span></span>' : ''}
@@ -520,7 +535,7 @@
             if (!this.sessionId) return;
 
             try {
-                await fetch(`${window.paxLiveAgent.restUrl}/liveagent/message/mark-read`, {
+                await fetch(`${window.paxLiveAgent.restUrl}liveagent/message/mark-read`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

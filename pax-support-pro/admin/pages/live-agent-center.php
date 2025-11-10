@@ -19,6 +19,7 @@ function pax_sup_render_live_agent_center_page() {
 
     $options = pax_sup_get_options();
     $enabled = ! empty( $options['live_agent_enabled'] );
+    $liveagent_settings = pax_sup_get_liveagent_settings();
 
     if ( ! $enabled ) {
         ?>
@@ -137,12 +138,12 @@ function pax_sup_render_live_agent_center_page() {
     // Pass data to JavaScript
     window.paxLiveAgent = {
         ajaxUrl: '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>',
-        restUrl: '<?php echo esc_js( rest_url( 'pax/v1' ) ); ?>',
+        restUrl: '<?php echo esc_js( trailingslashit( rest_url( 'pax/v1' ) ) ); ?>',
         nonce: '<?php echo esc_js( wp_create_nonce( 'wp_rest' ) ); ?>',
         agentId: <?php echo (int) $agent_id; ?>,
         selectedSessionId: <?php echo $selected_session ? (int) $selected_session['id'] : 'null'; ?>,
         refreshInterval: 15000,
-        soundEnabled: <?php echo isset( $settings['sound_enabled'] ) && $settings['sound_enabled'] ? 'true' : 'false'; ?>,
+        soundEnabled: <?php echo ! empty( $liveagent_settings['sound_enabled'] ) ? 'true' : 'false'; ?>,
         strings: {
             newMessage: '<?php echo esc_js( __( 'New message received', 'pax-support-pro' ) ); ?>',
             newRequest: '<?php echo esc_js( __( 'New chat request', 'pax-support-pro' ) ); ?>',

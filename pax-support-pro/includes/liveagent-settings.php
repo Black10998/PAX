@@ -39,175 +39,81 @@ function pax_sup_get_liveagent_settings() {
 }
 
 /**
- * Render Live Agent settings section
+ * Normalize allowed file types.
+ *
+ * @param mixed $value Raw value from settings.
+ * @return array
  */
-function pax_sup_render_liveagent_settings_section() {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        return;
+function pax_sup_normalize_liveagent_file_types( $value ) {
+    if ( is_string( $value ) ) {
+        $value = array_map( 'trim', explode( ',', $value ) );
     }
 
-    // Handle form submission
-    if ( isset( $_POST['pax_liveagent_settings_nonce'] ) && 
-         wp_verify_nonce( $_POST['pax_liveagent_settings_nonce'], 'pax_liveagent_settings_save' ) ) {
-        pax_sup_save_liveagent_settings();
+    if ( ! is_array( $value ) ) {
+        return array( 'jpg', 'png', 'gif', 'pdf', 'doc', 'docx' );
     }
 
-    $settings = pax_sup_get_liveagent_settings();
-    ?>
-    <div class="pax-card">
-        <div class="pax-card-header">
-            <h2>
-                <span class="dashicons dashicons-format-chat"></span>
-                <?php esc_html_e( 'Live Agent Settings', 'pax-support-pro' ); ?>
-            </h2>
-        </div>
-        <div class="pax-card-body">
-            <form method="post" action="">
-                <?php wp_nonce_field( 'pax_liveagent_settings_save', 'pax_liveagent_settings_nonce' ); ?>
+    $normalized = array();
 
-                <!-- Enable Live Agent -->
-                <div class="pax-form-group">
-                    <label>
-                        <input type="checkbox" name="enabled" value="1" <?php checked( $settings['enabled'] ); ?>>
-                        <?php esc_html_e( 'Enable Live Agent System', 'pax-support-pro' ); ?>
-                    </label>
-                    <p class="description">
-                        <?php esc_html_e( 'Enable real-time live chat between users and support agents.', 'pax-support-pro' ); ?>
-                    </p>
-                </div>
+    foreach ( $value as $type ) {
+        $type = sanitize_key( $type );
+        if ( ! empty( $type ) ) {
+            $normalized[] = $type;
+        }
+    }
 
-                <hr>
+    if ( empty( $normalized ) ) {
+        $normalized = array( 'jpg', 'png', 'gif', 'pdf', 'doc', 'docx' );
+    }
 
-                <!-- File Uploads -->
-                <h3><?php esc_html_e( 'File Uploads', 'pax-support-pro' ); ?></h3>
-                
-                <div class="pax-form-group">
-                    <label>
-                        <input type="checkbox" name="allow_file_uploads" value="1" <?php checked( $settings['allow_file_uploads'] ); ?>>
-                        <?php esc_html_e( 'Allow File Uploads', 'pax-support-pro' ); ?>
-                    </label>
-                </div>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Max File Size (MB)', 'pax-support-pro' ); ?></label>
-                    <input type="number" name="max_file_size_mb" value="<?php echo esc_attr( $settings['max_file_size_mb'] ); ?>" min="1" max="50" class="pax-input">
-                </div>
-
-                <hr>
-
-                <!-- Notifications -->
-                <h3><?php esc_html_e( 'Notifications', 'pax-support-pro' ); ?></h3>
-
-                <div class="pax-form-group">
-                    <label>
-                        <input type="checkbox" name="sound_enabled" value="1" <?php checked( $settings['sound_enabled'] ); ?>>
-                        <?php esc_html_e( 'Enable Sound Notifications', 'pax-support-pro' ); ?>
-                    </label>
-                </div>
-
-                <div class="pax-form-group">
-                    <label>
-                        <input type="checkbox" name="email_notifications" value="1" <?php checked( $settings['email_notifications'] ); ?>>
-                        <?php esc_html_e( 'Enable Email Notifications', 'pax-support-pro' ); ?>
-                    </label>
-                </div>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Notification Email', 'pax-support-pro' ); ?></label>
-                    <input type="email" name="notification_email" value="<?php echo esc_attr( $settings['notification_email'] ); ?>" class="pax-input">
-                </div>
-
-                <hr>
-
-                <!-- Display -->
-                <h3><?php esc_html_e( 'Display Settings', 'pax-support-pro' ); ?></h3>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Button Position', 'pax-support-pro' ); ?></label>
-                    <select name="button_position" class="pax-select">
-                        <option value="bottom-right" <?php selected( $settings['button_position'], 'bottom-right' ); ?>><?php esc_html_e( 'Bottom Right', 'pax-support-pro' ); ?></option>
-                        <option value="bottom-left" <?php selected( $settings['button_position'], 'bottom-left' ); ?>><?php esc_html_e( 'Bottom Left', 'pax-support-pro' ); ?></option>
-                        <option value="top-right" <?php selected( $settings['button_position'], 'top-right' ); ?>><?php esc_html_e( 'Top Right', 'pax-support-pro' ); ?></option>
-                        <option value="top-left" <?php selected( $settings['button_position'], 'top-left' ); ?>><?php esc_html_e( 'Top Left', 'pax-support-pro' ); ?></option>
-                    </select>
-                </div>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Button Text', 'pax-support-pro' ); ?></label>
-                    <input type="text" name="button_text" value="<?php echo esc_attr( $settings['button_text'] ); ?>" class="pax-input">
-                </div>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Welcome Message', 'pax-support-pro' ); ?></label>
-                    <textarea name="welcome_message" rows="3" class="pax-input"><?php echo esc_textarea( $settings['welcome_message'] ); ?></textarea>
-                </div>
-
-                <hr>
-
-                <!-- Advanced -->
-                <h3><?php esc_html_e( 'Advanced Settings', 'pax-support-pro' ); ?></h3>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Auto-close Inactive Sessions (minutes)', 'pax-support-pro' ); ?></label>
-                    <input type="number" name="auto_close_minutes" value="<?php echo esc_attr( $settings['auto_close_minutes'] ); ?>" min="5" max="120" class="pax-input">
-                </div>
-
-                <div class="pax-form-group">
-                    <label><?php esc_html_e( 'Timeout Before Auto-decline (seconds)', 'pax-support-pro' ); ?></label>
-                    <input type="number" name="timeout_seconds" value="<?php echo esc_attr( $settings['timeout_seconds'] ); ?>" min="30" max="300" class="pax-input">
-                </div>
-
-                <div class="pax-form-group">
-                    <label>
-                        <input type="checkbox" name="cloudflare_mode" value="1" <?php checked( $settings['cloudflare_mode'] ); ?>>
-                        <?php esc_html_e( 'Enable Cloudflare Compatibility Mode', 'pax-support-pro' ); ?>
-                    </label>
-                    <p class="description">
-                        <?php esc_html_e( 'Adjust polling intervals for sites behind Cloudflare or similar proxies.', 'pax-support-pro' ); ?>
-                    </p>
-                </div>
-
-                <button type="submit" class="button button-primary">
-                    <span class="dashicons dashicons-yes"></span>
-                    <?php esc_html_e( 'Save Live Agent Settings', 'pax-support-pro' ); ?>
-                </button>
-            </form>
-        </div>
-    </div>
-    <?php
+    return array_values( array_unique( $normalized ) );
 }
 
 /**
  * Save Live Agent settings
  */
-function pax_sup_save_liveagent_settings() {
+function pax_sup_save_liveagent_settings( $input = null ) {
     if ( ! current_user_can( 'manage_options' ) ) {
-        return;
+        return false;
     }
 
+    if ( null === $input ) {
+        $input = wp_unslash( $_POST );
+    }
+
+    $defaults = pax_sup_get_liveagent_settings();
+
     $settings = array(
-        'enabled' => isset( $_POST['enabled'] ) && $_POST['enabled'] === '1',
-        'allow_file_uploads' => isset( $_POST['allow_file_uploads'] ) && $_POST['allow_file_uploads'] === '1',
-        'max_file_size_mb' => isset( $_POST['max_file_size_mb'] ) ? (int) $_POST['max_file_size_mb'] : 10,
-        'sound_enabled' => isset( $_POST['sound_enabled'] ) && $_POST['sound_enabled'] === '1',
-        'email_notifications' => isset( $_POST['email_notifications'] ) && $_POST['email_notifications'] === '1',
-        'notification_email' => isset( $_POST['notification_email'] ) ? sanitize_email( $_POST['notification_email'] ) : get_option( 'admin_email' ),
-        'button_position' => isset( $_POST['button_position'] ) ? sanitize_text_field( $_POST['button_position'] ) : 'bottom-right',
-        'button_text' => isset( $_POST['button_text'] ) ? sanitize_text_field( $_POST['button_text'] ) : __( 'Live Agent', 'pax-support-pro' ),
-        'welcome_message' => isset( $_POST['welcome_message'] ) ? sanitize_textarea_field( $_POST['welcome_message'] ) : '',
-        'auto_close_minutes' => isset( $_POST['auto_close_minutes'] ) ? (int) $_POST['auto_close_minutes'] : 30,
-        'timeout_seconds' => isset( $_POST['timeout_seconds'] ) ? (int) $_POST['timeout_seconds'] : 60,
-        'cloudflare_mode' => isset( $_POST['cloudflare_mode'] ) && $_POST['cloudflare_mode'] === '1',
+        'enabled'               => ! empty( $input['enabled'] ) ? 1 : 0,
+        'auto_accept'           => ! empty( $input['auto_accept'] ) ? 1 : 0,
+        'max_concurrent_chats'  => max( 1, min( 50, intval( $input['max_concurrent_chats'] ?? $defaults['max_concurrent_chats'] ) ) ),
+        'auto_close_minutes'    => max( 5, min( 240, intval( $input['auto_close_minutes'] ?? $defaults['auto_close_minutes'] ) ) ),
+        'timeout_seconds'       => max( 30, min( 600, intval( $input['timeout_seconds'] ?? $defaults['timeout_seconds'] ) ) ),
+        'allow_file_uploads'    => ! empty( $input['allow_file_uploads'] ) ? 1 : 0,
+        'max_file_size_mb'      => max( 1, min( 100, intval( $input['max_file_size_mb'] ?? $defaults['max_file_size_mb'] ) ) ),
+        'allowed_file_types'    => pax_sup_normalize_liveagent_file_types( $input['allowed_file_types'] ?? $defaults['allowed_file_types'] ),
+        'sound_enabled'         => ! empty( $input['sound_enabled'] ) ? 1 : 0,
+        'email_notifications'   => ! empty( $input['email_notifications'] ) ? 1 : 0,
+        'notification_email'    => sanitize_email( $input['notification_email'] ?? $defaults['notification_email'] ),
+        'browser_notifications' => ! empty( $input['browser_notifications'] ) ? 1 : 0,
+        'button_position'       => in_array( $input['button_position'] ?? $defaults['button_position'], array( 'bottom-right', 'bottom-left', 'top-right', 'top-left' ), true )
+            ? $input['button_position']
+            : $defaults['button_position'],
+        'button_text'           => sanitize_text_field( $input['button_text'] ?? $defaults['button_text'] ),
+        'welcome_message'       => sanitize_textarea_field( $input['welcome_message'] ?? $defaults['welcome_message'] ),
+        'cloudflare_mode'       => ! empty( $input['cloudflare_mode'] ) ? 1 : 0,
+        'poll_interval'         => max( 5, min( 120, intval( $input['poll_interval'] ?? $defaults['poll_interval'] ) ) ),
+        'message_history_limit' => max( 20, min( 500, intval( $input['message_history_limit'] ?? $defaults['message_history_limit'] ) ) ),
+        'archive_after_days'    => max( 1, min( 180, intval( $input['archive_after_days'] ?? $defaults['archive_after_days'] ) ) ),
     );
+
+    if ( empty( $settings['notification_email'] ) ) {
+        $settings['notification_email'] = get_option( 'admin_email' );
+    }
 
     update_option( 'pax_liveagent_settings', $settings );
 
-    add_settings_error(
-        'pax_liveagent',
-        'settings_updated',
-        __( 'Live Agent settings updated successfully.', 'pax-support-pro' ),
-        'success'
-    );
+    return $settings;
 }
 
 /**
