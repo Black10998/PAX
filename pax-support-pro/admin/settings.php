@@ -200,6 +200,81 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             PAX_SUP_VER,
             true
         );
+
+        $rest_base    = trailingslashit( rest_url( 'pax/v1' ) );
+        $site_domain  = wp_parse_url( get_site_url(), PHP_URL_HOST );
+        $site_domain  = $site_domain ? $site_domain : wp_parse_url( get_site_url(), PHP_URL_HOST );
+        $server_name  = isset( $_SERVER['SERVER_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_NAME'] ) ) : $site_domain;
+        $server_ip    = $server_name ? @gethostbyname( $server_name ) : '';
+        $current_user = wp_get_current_user();
+
+        wp_localize_script(
+            'pax-liveagent-center',
+            'paxLiveAgentCenterConfig',
+            array(
+                'rest'   => array(
+                    'base'        => $rest_base,
+                    'sessions'    => $rest_base . 'sessions',
+                    'session'     => $rest_base . 'session/',
+                    'messages'    => $rest_base . 'messages',
+                    'message'     => $rest_base . 'message',
+                    'accept'      => $rest_base . 'accept',
+                    'decline'     => $rest_base . 'decline',
+                    'close'       => $rest_base . 'close',
+                    'status'      => $rest_base . 'status',
+                    'typing'      => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/status/typing' ) ),
+                    'markRead'    => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/message/mark-read' ) ),
+                    'fileUpload'  => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/file/upload' ) ),
+                ),
+                'nonce'  => wp_create_nonce( 'wp_rest' ),
+                'assets' => array(
+                    'version' => PAX_SUP_VER,
+                    'commit'  => function_exists( 'pax_sup_get_current_commit_hash' ) ? pax_sup_get_current_commit_hash() : 'n/a',
+                ),
+                'diagnostics' => array(
+                    'restBase'   => $rest_base,
+                    'siteDomain' => $site_domain ?: get_site_url(),
+                    'serverIp'   => $server_ip ?: '',
+                ),
+                'user' => array(
+                    'id'   => $current_user instanceof WP_User ? $current_user->ID : 0,
+                    'name' => $current_user instanceof WP_User ? $current_user->display_name : '',
+                ),
+                'strings' => array(
+                    'pendingTab'      => __( 'Pending', 'pax-support-pro' ),
+                    'activeTab'       => __( 'Active', 'pax-support-pro' ),
+                    'recentTab'       => __( 'Recent', 'pax-support-pro' ),
+                    'noPending'       => __( 'No pending requests.', 'pax-support-pro' ),
+                    'noActive'        => __( 'No active chats.', 'pax-support-pro' ),
+                    'noRecent'        => __( 'No recent sessions yet.', 'pax-support-pro' ),
+                    'accept'          => __( 'Accept', 'pax-support-pro' ),
+                    'decline'         => __( 'Decline', 'pax-support-pro' ),
+                    'close'           => __( 'End Session', 'pax-support-pro' ),
+                    'cancel'          => __( 'Cancel', 'pax-support-pro' ),
+                    'confirmClose'    => __( 'End this chat session?', 'pax-support-pro' ),
+                    'confirmDecline'  => __( 'Decline this chat request?', 'pax-support-pro' ),
+                    'composerHint'    => __( 'Type a reply…', 'pax-support-pro' ),
+                    'acceptPrompt'    => __( 'Accept this chat to reply.', 'pax-support-pro' ),
+                    'closedMessage'   => __( 'This session is closed.', 'pax-support-pro' ),
+                    'uploadLabel'     => __( 'Attach file', 'pax-support-pro' ),
+                    'uploading'       => __( 'Uploading…', 'pax-support-pro' ),
+                    'uploadFailed'    => __( 'Upload failed. Please try again.', 'pax-support-pro' ),
+                    'messageFailed'   => __( 'Unable to send message. Please try again.', 'pax-support-pro' ),
+                    'send'            => __( 'Send', 'pax-support-pro' ),
+                    'unread'          => __( 'Unread', 'pax-support-pro' ),
+                    'live'            => __( 'Live', 'pax-support-pro' ),
+                    'unknownUser'     => __( 'Guest', 'pax-support-pro' ),
+                    'justNow'         => __( 'Just now', 'pax-support-pro' ),
+                    'ago'             => __( 'ago', 'pax-support-pro' ),
+                    'read'            => __( 'Read', 'pax-support-pro' ),
+                    'pingTesting'     => __( 'Pinging…', 'pax-support-pro' ),
+                    'pingSuccess'     => __( 'REST API reachable', 'pax-support-pro' ),
+                    'pingError'       => __( 'Unable to reach REST API', 'pax-support-pro' ),
+                    'emptyStateTitle' => __( 'No chat selected', 'pax-support-pro' ),
+                    'emptyStateBody'  => __( 'Choose a conversation to see messages here.', 'pax-support-pro' ),
+                ),
+            )
+        );
     }
 
     // Analytics page specific assets

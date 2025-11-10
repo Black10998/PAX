@@ -1169,3 +1169,44 @@ function pax_sup_migrate_to_bright_theme() {
 }
 add_action( 'admin_init', 'pax_sup_migrate_to_bright_theme' );
 add_action( 'wp', 'pax_sup_migrate_to_bright_theme' );
+
+/**
+ * Attempt to read the current Git commit hash for display purposes.
+ *
+ * @return string
+ */
+function pax_sup_get_current_commit_hash() {
+    static $hash = null;
+
+    if ( null !== $hash ) {
+        return $hash;
+    }
+
+    $hash    = 'n/a';
+    $git_dir = trailingslashit( dirname( PAX_SUP_DIR ) ) . '.git';
+
+    if ( is_dir( $git_dir ) ) {
+        $head_file = $git_dir . 'HEAD';
+        if ( file_exists( $head_file ) ) {
+            $head_contents = trim( (string) file_get_contents( $head_file ) );
+
+            if ( 0 === strpos( $head_contents, 'ref:' ) ) {
+                $ref_path = trim( substr( $head_contents, 4 ) );
+                $ref_file = $git_dir . $ref_path;
+                if ( file_exists( $ref_file ) ) {
+                    $hash = trim( (string) file_get_contents( $ref_file ) );
+                }
+            } elseif ( ! empty( $head_contents ) ) {
+                $hash = $head_contents;
+            }
+        }
+    }
+
+    if ( $hash && 'n/a' !== $hash ) {
+        $hash = substr( $hash, 0, 7 );
+    } else {
+        $hash = 'n/a';
+    }
+
+    return $hash;
+}
