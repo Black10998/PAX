@@ -1216,6 +1216,16 @@
   height: 20px;
 }
 
+@media (max-width: 640px) {
+  #pax-chat,
+  #pax-chat-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100%;
+    border-radius: 0;
+  }
+}
+
 /* Quick Actions */
 .pax-quick-actions-btn {
   width: 32px;

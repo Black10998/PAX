@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 5.9.1
+Stable tag: 5.9.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -13,6 +13,10 @@ Professional support and chat system with optional AI integration for automated 
 == Description ==
 
 PAX Support Pro is a professional support and chat system with optional AI integration using the OpenAI API for automated responses. Built with precision and performance in mind, it provides a complete helpdesk solution for WordPress sites.
+
+= CDN / WAF =
+
+Ensure your CDN or web application firewall bypasses `^/wp-json/pax/v1/*` so real-time chat REST endpoints remain accessible for the Live Agent experience.
 
 = Key Features =
 
@@ -100,6 +104,9 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.9.2 - 2025-11-10 =
+* Fix REST access, nocache, real-time admin polling, responsive refinements & diagnostics.
 
 = 5.9.1 - 2025-11-10 =
 * Admin sync fix, live notifications, Quick Prompts, modern neon-glass UI, and improved diagnostics.

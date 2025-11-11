@@ -86,6 +86,10 @@ function pax_register_live_agent_routes() {
 function pax_live_agent_start( $request ) {
     global $wpdb;
     
+    if ( ! pax_live_agent_verify_nonce( $request ) ) {
+        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
+
     $user_meta      = $request->get_param( 'user_meta' ) ?: array();
     $current_user   = wp_get_current_user();
     $has_wp_user    = ( $current_user instanceof WP_User ) && $current_user->exists();
@@ -101,6 +105,8 @@ function pax_live_agent_start( $request ) {
         'core'
     );
 
+    $now = current_time( 'mysql' );
+
     $session_payload = array(
         'status'      => 'pending',
         'user_id'     => $has_wp_user ? (int) $current_user->ID : 0,
@@ -113,6 +119,7 @@ function pax_live_agent_start( $request ) {
         'auth_plugin' => $auth_plugin,
         'source'      => 'widget',
         'messages'    => array(),
+        'last_activity' => $now,
     );
 
     $session_id = pax_live_agent_session_create( $session_payload );
@@ -126,15 +133,7 @@ function pax_live_agent_start( $request ) {
         $session['user_name'] = $resolved_name ?: __( 'Guest', 'pax-support-pro' );
     }
 
-    error_log(
-        sprintf(
-            '[PAX LIVE] create_session sid=%d user=%d domain=%s auth=%s',
-            $session_id,
-            intval( $session_payload['user_id'] ),
-            $session_payload['domain'],
-            $session_payload['auth_plugin']
-        )
-    );
+    error_log( '[PAX LIVE] create sid=' . $session_id . ' user=' . intval( $session_payload['user_id'] ) . ' auth=' . $session_payload['auth_plugin'] . ' domain=' . $session_payload['domain'] );
 
     pax_notify_admin_live_agent_request( $session_id, array(
         'user_name'  => $session['user_name'] ?? $session_payload['user_name'],
@@ -281,6 +280,12 @@ function pax_live_agent_decline( $request ) {
 }
 
 function pax_live_agent_message( $request ) {
+    global $wpdb;
+
+    if ( ! pax_live_agent_verify_nonce( $request ) ) {
+        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
+
     $session_id     = (int) $request->get_param( 'session_id' );
     $raw_message    = $request->get_param( 'content' );
     if ( null === $raw_message ) {
@@ -365,6 +370,15 @@ function pax_live_agent_message( $request ) {
         return new WP_Error( 'db_error', __( 'Failed to save message.', 'pax-support-pro' ), array( 'status' => 500 ) );
     }
 
+    $now = current_time( 'mysql' );
+    $wpdb->update(
+        $wpdb->prefix . 'pax_liveagent_sessions',
+        array( 'last_activity' => $now ),
+        array( 'id' => $session_id ),
+        array( '%s' ),
+        array( '%d' )
+    );
+
     $updated_session = pax_sup_get_liveagent_session( $session_id );
     $messages        = $updated_session['messages'];
     $new_message     = null;
@@ -373,14 +387,7 @@ function pax_live_agent_message( $request ) {
         $new_message   = end( $temp_messages );
     }
 
-    error_log(
-        sprintf(
-            '[PAX LIVE] msg sid=%d role=%s len=%d',
-            $session_id,
-            $message_data['role'],
-            strlen( (string) $message_text )
-        )
-    );
+    error_log( '[PAX LIVE] msg sid=' . $session_id . ' role=' . $message_data['role'] . ' len=' . strlen( $message_text ) );
 
     if ( $new_message ) {
         pax_sup_notify_new_message( $session_id, $new_message, $sender );
@@ -395,6 +402,12 @@ function pax_live_agent_message( $request ) {
 }
 
 function pax_live_agent_get_messages( $request ) {
+    nocache_headers();
+
+    if ( ! pax_live_agent_verify_nonce( $request ) ) {
+        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
+
     $session_id = (int) $request->get_param( 'session_id' );
 
     if ( ! $session_id ) {
@@ -451,6 +464,8 @@ function pax_live_agent_list_sessions( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
+    nocache_headers();
+
     global $wpdb;
 
     $limit        = $request->get_param( 'limit' ) ? intval( $request->get_param( 'limit' ) ) : 30;
@@ -505,13 +520,7 @@ function pax_live_agent_list_sessions( $request ) {
         $recent_raw
     );
 
-    error_log(
-        sprintf(
-            '[PAX LIVE] list_sessions uid=%d count=%d',
-            get_current_user_id(),
-            count( $pending ) + count( $active )
-        )
-    );
+    error_log( '[PAX LIVE] /live/sessions served uid=' . get_current_user_id() );
 
     return rest_ensure_response( array(
         'success' => true,
@@ -671,24 +680,27 @@ function pax_live_agent_get_typing_state( $session_id ) {
 }
 
 function pax_live_agent_verify_nonce( $request ) {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        return false;
-    }
-
     $nonce = $request->get_header( 'X-WP-Nonce' );
+
     if ( ! $nonce ) {
         $nonce = $request->get_header( 'x-wp-nonce' );
     }
 
-    if ( ! $nonce && isset( $_REQUEST['_wpnonce'] ) ) {
-        $nonce = sanitize_text_field( wp_unslash( $_REQUEST['_wpnonce'] ) );
-    }
-
     if ( ! $nonce ) {
         return false;
     }
 
-    return (bool) wp_verify_nonce( $nonce, 'wp_rest' );
+    if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+        return false;
+    }
+
+    $route = $request->get_route();
+
+    if ( strpos( $route, '/live/sessions' ) !== false || strpos( $route, '/live/messages' ) !== false ) {
+        return is_user_logged_in();
+    }
+
+    return current_user_can( 'manage_options' );
 }
 
 function pax_live_agent_user_can_access_session( $session ) {

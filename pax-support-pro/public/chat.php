@@ -50,6 +50,7 @@ function pax_sup_enqueue_public_assets() {
     
     // v5.8.5: Add live agent addon
     wp_enqueue_script( 'pax-live-agent-addon', PAX_SUP_URL . 'assets/js/live-agent-addon.js', array( 'pax-unified-chat' ), PAX_SUP_VER, true );
+    wp_enqueue_script( 'pax-live-widget', PAX_SUP_URL . 'assets/js/pax-live-widget.js', array( 'pax-live-agent-addon' ), PAX_SUP_VER, true );
 
     $position = $options['launcher_position'];
     $reaction_color = ! empty( $options['reaction_btn_color'] ) ? $options['reaction_btn_color'] : '#e53935';

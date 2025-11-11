@@ -78,8 +78,8 @@ function pax_sup_render_live_agent_center_page() {
             </div>
         </header>
 
-        <section class="pax-liveagent-shell">
-            <aside class="pax-liveagent-sidebar pax-card" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
+        <section class="pax-liveagent-shell pax-liveagent-layout">
+            <aside class="pax-liveagent-sidebar pax-card pax-sidebar" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
                 <nav class="pax-session-tabs" role="tablist">
                     <button type="button" class="pax-tab-button active" data-tab="pending" aria-selected="true">
                         <span class="pax-tab-icon" aria-hidden="true">🕓</span>
@@ -143,7 +143,7 @@ function pax_sup_render_live_agent_center_page() {
                     </div>
 
                     <div class="pax-chat-panel-body">
-                        <div class="pax-chat-conversation">
+                        <div class="pax-chat-conversation pax-convo">
                             <div class="pax-chat-session-tags" id="pax-liveagent-session-tags"></div>
 
                             <div class="pax-chat-scroll" id="pax-liveagent-messages" data-scroll>

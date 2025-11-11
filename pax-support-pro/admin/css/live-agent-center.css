@@ -656,6 +656,18 @@
     color: var(--pax-muted);
 }
 
+@media (max-width: 640px) {
+    .pax-liveagent-layout {
+        grid-template-columns: 1fr !important;
+    }
+
+    .pax-session-list,
+    .pax-convo,
+    .pax-sidebar {
+        min-height: auto;
+    }
+}
+
 @media (max-width: 1280px) {
     .pax-liveagent-shell {
         grid-template-columns: minmax(0, 1fr);

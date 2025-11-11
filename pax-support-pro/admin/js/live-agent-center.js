@@ -6,16 +6,17 @@
         return;
     }
 
-    const REST_BASE = ensureTrailingSlash(config.rest.base);
+    const API_BASE = (window.PAX_LIVE?.restBase || `${window.location.origin}/wp-json/pax/v1/`).replace(/\/?$/, '/');
+    const REST_BASE = config.rest && config.rest.base ? ensureTrailingSlash(config.rest.base) : API_BASE;
     const REST_ROUTES = {
-        sessions: config.rest.sessions || (REST_BASE + 'sessions'),
-        session: config.rest.session || (REST_BASE + 'session/'),
-        messages: config.rest.messages || (REST_BASE + 'messages'),
-        message: config.rest.message || (REST_BASE + 'message'),
-        accept: config.rest.accept || (REST_BASE + 'accept'),
-        decline: config.rest.decline || (REST_BASE + 'decline'),
-        close: config.rest.close || (REST_BASE + 'close'),
-        status: config.rest.status || (REST_BASE + 'status'),
+        sessions: config.rest.sessions || (API_BASE + 'live/sessions'),
+        session: config.rest.session || (API_BASE + 'live/session/'),
+        messages: config.rest.messages || (API_BASE + 'live/messages'),
+        message: config.rest.message || (API_BASE + 'live/message'),
+        accept: config.rest.accept || (API_BASE + 'live/accept'),
+        decline: config.rest.decline || (API_BASE + 'live/decline'),
+        close: config.rest.close || (API_BASE + 'live/close'),
+        status: config.rest.status || (API_BASE + 'live/status'),
         typing: config.rest.typing,
         markRead: config.rest.markRead,
         fileUpload: config.rest.fileUpload
@@ -47,6 +48,7 @@
             this.pendingNotified = new Set();
             this.lastUserMessageId = {};
             this.focusTarget = null;
+            this.sessionPoll = null;
 
             this.init();
         }
@@ -211,11 +213,14 @@
         }
 
         startSessionPolling() {
-            if (this.state.polling.sessions) {
-                clearInterval(this.state.polling.sessions);
+            if (this.sessionPoll) {
+                clearInterval(this.sessionPoll);
+                this.sessionPoll = null;
             }
             this.fetchSessions();
-            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 3000);
+            if (!this.sessionPoll) {
+                this.sessionPoll = window.setInterval(() => this.fetchSessions(), 3000);
+            }
         }
 
         startMessagePolling() {
@@ -231,22 +236,24 @@
         async fetchSessions(initial = false) {
             const previousPendingIds = new Set((this.state.sessions.pending || []).map((session) => session.id));
             try {
-                const params = new URLSearchParams({
-                    limit: '30',
-                    recent_limit: '20',
+                const response = await fetch(`${API_BASE}live/sessions?limit=30`, {
+                    method: 'GET',
+                    headers: {
+                        'X-WP-Nonce': window.PAX_LIVE?.nonce || this.config.nonce || ''
+                    },
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
 
-                const response = await this.request(`${REST_ROUTES.sessions}?${params.toString()}`, {
-                    method: 'GET'
-                });
+                const data = await response.json();
 
-                if (!response.success) {
+                if (!response.ok || !data.success) {
                     return;
                 }
 
-                this.state.sessions.pending = response.pending || [];
-                this.state.sessions.active = response.active || [];
-                this.state.sessions.recent = response.recent || [];
+                this.state.sessions.pending = data.pending || [];
+                this.state.sessions.active = data.active || [];
+                this.state.sessions.recent = data.recent || [];
 
                 const newPending = this.state.sessions.pending.find((session) => !previousPendingIds.has(session.id));
                 if (newPending && !this.pendingNotified.has(newPending.id)) {
