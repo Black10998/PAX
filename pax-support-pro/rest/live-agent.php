@@ -89,38 +89,47 @@ function pax_live_agent_start( $request ) {
     $user_meta      = $request->get_param( 'user_meta' ) ?: array();
     $current_user   = wp_get_current_user();
     $has_wp_user    = ( $current_user instanceof WP_User ) && $current_user->exists();
-    $resolved_name  = $has_wp_user ? $current_user->display_name : sanitize_text_field( $user_meta['name'] ?? 'Guest' );
+    $resolved_name  = $has_wp_user ? ( $current_user->display_name ?: $current_user->user_login ) : sanitize_text_field( $user_meta['name'] ?? __( 'Guest', 'pax-support-pro' ) );
     $resolved_email = $has_wp_user ? $current_user->user_email : sanitize_email( $user_meta['email'] ?? '' );
 
-    $page_url = $request->get_param( 'page_url' );
-    $session_data = array(
-        'user_id'       => $has_wp_user ? (int) $current_user->ID : (int) get_current_user_id(),
-        'status'        => 'pending',
-        'started_at'    => current_time( 'mysql' ),
-        'user_name'     => $resolved_name ? sanitize_text_field( $resolved_name ) : 'Guest',
-        'user_email'    => $resolved_email,
-        'user_ip'       => pax_sup_get_client_ip(),
-        'page_url'      => $page_url ? esc_url_raw( $page_url ) : '',
-        'messages'      => wp_json_encode( array() ),
-        'live_agent'    => 1,
-        'last_activity' => current_time( 'mysql' ),
+    $page_url  = isset( $request['page_url'] ) ? esc_url_raw( $request['page_url'] ) : '';
+    $domain    = wp_parse_url( home_url(), PHP_URL_HOST );
+    $auth_plugin = (
+        ( function_exists( 'ppress_is_profilepress_active' ) || defined( 'PROFILEPRESS_VERSION' ) ) ? 'profilepress' :
+        ( function_exists( 'wc' ) || class_exists( 'WooCommerce' ) ) ? 'woocommerce' :
+        ( function_exists( 'um_user' ) || defined( 'UM_VERSION' ) ) ? 'ultimatemember' :
+        'core'
     );
-    
-    $table = $wpdb->prefix . 'pax_liveagent_sessions';
-    $inserted = $wpdb->insert( $table, $session_data );
-    
-    if ( ! $inserted ) {
+
+    $session_payload = array(
+        'status'      => 'pending',
+        'user_id'     => $has_wp_user ? (int) $current_user->ID : 0,
+        'user_name'   => $resolved_name ?: __( 'Guest', 'pax-support-pro' ),
+        'user_email'  => $resolved_email,
+        'user_ip'     => pax_sup_get_client_ip(),
+        'user_agent'  => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 255 ) : '',
+        'page_url'    => $page_url,
+        'domain'      => sanitize_text_field( $domain ),
+        'auth_plugin' => $auth_plugin,
+        'source'      => 'widget',
+        'messages'    => array(),
+    );
+
+    $session_id = pax_live_agent_session_create( $session_payload );
+
+    if ( ! $session_id ) {
         return new WP_Error( 'db_error', 'Failed to create session', array( 'status' => 500 ) );
     }
-    
-    $session_id = $wpdb->insert_id;
-    
-    pax_notify_admin_live_agent_request( $session_id, $session_data );
-    
+
     $session = pax_sup_get_liveagent_session( $session_id );
     if ( $session && empty( $session['user_name'] ) ) {
-        $session['user_name'] = $resolved_name ?: 'Guest';
+        $session['user_name'] = $resolved_name ?: __( 'Guest', 'pax-support-pro' );
     }
+
+    pax_notify_admin_live_agent_request( $session_id, array(
+        'user_name'  => $session['user_name'] ?? $session_payload['user_name'],
+        'user_email' => $session['user_email'] ?? $session_payload['user_email'],
+    ) );
 
     $summary = $session ? pax_live_agent_prepare_session_summary( $session, 'user' ) : array(
         'id'     => $session_id,
@@ -258,7 +267,10 @@ function pax_live_agent_decline( $request ) {
 
 function pax_live_agent_message( $request ) {
     $session_id     = (int) $request->get_param( 'session_id' );
-    $raw_message    = $request->get_param( 'message' );
+    $raw_message    = $request->get_param( 'content' );
+    if ( null === $raw_message ) {
+        $raw_message = $request->get_param( 'message' );
+    }
     $reply_to       = $request->get_param( 'reply_to' );
     $attachment_id  = $request->get_param( 'attachment_id' );
 
@@ -305,6 +317,7 @@ function pax_live_agent_message( $request ) {
 
     $message_data = array(
         'sender'  => $sender,
+        'role'    => ( 'agent' === $sender ) ? 'admin' : 'user',
         'message' => $message_text,
     );
 
@@ -339,9 +352,15 @@ function pax_live_agent_message( $request ) {
 
     $updated_session = pax_sup_get_liveagent_session( $session_id );
     $messages        = $updated_session['messages'];
-    $new_message     = end( $messages );
+    $new_message     = null;
+    if ( is_array( $messages ) && ! empty( $messages ) ) {
+        $temp_messages = $messages;
+        $new_message   = end( $temp_messages );
+    }
 
-    pax_sup_notify_new_message( $session_id, $new_message, $sender );
+    if ( $new_message ) {
+        pax_sup_notify_new_message( $session_id, $new_message, $sender );
+    }
 
     return rest_ensure_response( array(
         'success' => true,
@@ -405,16 +424,38 @@ function pax_live_agent_list_sessions( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
-    $limit        = $request->get_param( 'limit' ) ? intval( $request->get_param( 'limit' ) ) : 20;
+    global $wpdb;
+
+    $limit        = $request->get_param( 'limit' ) ? intval( $request->get_param( 'limit' ) ) : 30;
     $recent_limit = $request->get_param( 'recent_limit' ) ? intval( $request->get_param( 'recent_limit' ) ) : 10;
     $limit        = max( 1, min( 100, $limit ) );
     $recent_limit = max( 1, min( 50, $recent_limit ) );
 
     $viewer = ( current_user_can( 'manage_options' ) || current_user_can( 'manage_pax_chats' ) ) ? 'agent' : 'user';
 
-    $pending_raw = pax_sup_get_liveagent_sessions_by_status( 'pending' );
-    $active_raw  = pax_sup_get_liveagent_sessions_by_status( 'active' );
-    $recent_raw  = pax_sup_get_recent_liveagent_sessions( $recent_limit );
+    $since = gmdate( 'Y-m-d H:i:s', time() - DAY_IN_SECONDS );
+    $table = $wpdb->prefix . 'pax_liveagent_sessions';
+
+    $pending_raw = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM $table WHERE status = %s AND last_activity >= %s ORDER BY last_activity DESC LIMIT %d",
+            'pending',
+            $since,
+            $limit
+        ),
+        ARRAY_A
+    );
+
+    $active_raw = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT * FROM $table WHERE status IN ('active','accepted') AND last_activity >= %s ORDER BY last_activity DESC LIMIT %d",
+            $since,
+            $limit
+        ),
+        ARRAY_A
+    );
+
+    $recent_raw = pax_sup_get_recent_liveagent_sessions( $recent_limit );
 
     $pending = array_map(
         function( $session ) use ( $viewer ) {
@@ -535,8 +576,8 @@ function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
 
     $last_message = null;
     if ( ! empty( $messages ) ) {
-        $last_message = end( $messages );
-        reset( $messages );
+        $temp_messages = $messages;
+        $last_message  = end( $temp_messages );
     }
 
     return array(
@@ -548,6 +589,10 @@ function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
         'user_email'    => $session['user_email'] ?? '',
         'page_url'      => $session['page_url'] ?? '',
         'user_ip'       => $session['user_ip'] ?? '',
+        'domain'        => isset( $session['domain'] ) ? sanitize_text_field( $session['domain'] ) : '',
+        'auth_plugin'   => isset( $session['auth_plugin'] ) ? sanitize_key( $session['auth_plugin'] ) : 'core',
+        'user_agent'    => isset( $session['user_agent'] ) ? sanitize_text_field( $session['user_agent'] ) : '',
+        'source'        => isset( $session['source'] ) ? sanitize_text_field( $session['source'] ) : '',
         'started_at'    => $session['started_at'] ?? '',
         'ended_at'      => $session['ended_at'] ?? '',
         'last_activity' => $session['last_activity'] ?? '',

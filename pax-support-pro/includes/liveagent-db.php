@@ -15,10 +15,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 function pax_sup_create_liveagent_table() {
     global $wpdb;
 
-    $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
-    $charset_collate = $wpdb->get_charset_collate();
+        $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
+        $charset_collate = $wpdb->get_charset_collate();
 
-    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED NOT NULL,
         agent_id bigint(20) UNSIGNED DEFAULT NULL,
@@ -31,7 +31,11 @@ function pax_sup_create_liveagent_table() {
         user_name varchar(255) DEFAULT NULL,
         user_email varchar(255) DEFAULT NULL,
         user_ip varchar(100) DEFAULT NULL,
+        user_agent varchar(255) DEFAULT NULL,
         page_url text DEFAULT NULL,
+        domain varchar(191) DEFAULT NULL,
+        auth_plugin varchar(60) DEFAULT 'core',
+        source varchar(60) DEFAULT NULL,
         session_notes text DEFAULT NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
@@ -66,8 +70,10 @@ function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     // Get user IP (Cloudflare compatible)
     $user_ip = pax_sup_get_client_ip();
 
-    $args = is_array( $args ) ? $args : array();
+    $args     = is_array( $args ) ? $args : array();
     $page_url = ! empty( $args['page_url'] ) ? esc_url_raw( $args['page_url'] ) : '';
+    $user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 255 ) : '';
+    $domain     = wp_parse_url( home_url(), PHP_URL_HOST );
 
     $data = array(
         'user_id'       => $user_id,
@@ -77,7 +83,11 @@ function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
         'user_name'     => $user->display_name,
         'user_email'    => $user->user_email,
         'user_ip'       => $user_ip,
+        'user_agent'    => $user_agent,
         'page_url'      => $page_url,
+        'domain'        => sanitize_text_field( $domain ),
+        'auth_plugin'   => 'core',
+        'source'        => isset( $args['source'] ) ? sanitize_text_field( $args['source'] ) : '',
         'messages'      => wp_json_encode( array() ),
     );
 
@@ -89,6 +99,81 @@ function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     }
 
     return false;
+}
+
+/**
+ * Create a live agent session from payload data.
+ *
+ * @param array $payload Session data.
+ * @return int|false
+ */
+function pax_live_agent_session_create( $payload ) {
+    global $wpdb;
+
+    $defaults = array(
+        'status'      => 'pending',
+        'user_id'     => 0,
+        'user_name'   => '',
+        'user_email'  => '',
+        'user_ip'     => '',
+        'user_agent'  => '',
+        'page_url'    => '',
+        'domain'      => '',
+        'auth_plugin' => 'core',
+        'source'      => '',
+        'messages'    => array(),
+    );
+
+    $data = wp_parse_args( $payload, $defaults );
+
+    $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
+
+    $prepared = array(
+        'status'        => sanitize_key( $data['status'] ),
+        'user_id'       => $data['user_id'] ? (int) $data['user_id'] : 0,
+        'agent_id'      => isset( $data['agent_id'] ) ? (int) $data['agent_id'] : null,
+        'started_at'    => current_time( 'mysql' ),
+        'last_activity' => current_time( 'mysql' ),
+        'user_name'     => sanitize_text_field( $data['user_name'] ),
+        'user_email'    => sanitize_email( $data['user_email'] ),
+        'user_ip'       => sanitize_text_field( $data['user_ip'] ),
+        'user_agent'    => substr( sanitize_text_field( $data['user_agent'] ), 0, 255 ),
+        'page_url'      => $data['page_url'] ? esc_url_raw( $data['page_url'] ) : '',
+        'domain'        => sanitize_text_field( $data['domain'] ),
+        'auth_plugin'   => sanitize_key( $data['auth_plugin'] ),
+        'source'        => sanitize_text_field( $data['source'] ),
+        'messages'      => wp_json_encode( is_array( $data['messages'] ) ? $data['messages'] : array() ),
+    );
+
+    $formats = array(
+        '%s', // status
+        '%d', // user_id
+        '%d', // agent_id
+        '%s', // started_at
+        '%s', // last_activity
+        '%s', // user_name
+        '%s', // user_email
+        '%s', // user_ip
+        '%s', // user_agent
+        '%s', // page_url
+        '%s', // domain
+        '%s', // auth_plugin
+        '%s', // source
+        '%s', // messages
+    );
+
+    if ( null === $prepared['agent_id'] ) {
+        unset( $prepared['agent_id'] );
+        unset( $formats[2] );
+    }
+
+    $inserted = $wpdb->insert( $table_name, $prepared, array_values( $formats ) );
+
+    if ( false === $inserted ) {
+        return false;
+    }
+
+    return (int) $wpdb->insert_id;
 }
 
 /**
@@ -258,6 +343,9 @@ function pax_sup_add_liveagent_message( $session_id, $message_data ) {
     $message_data['id'] = uniqid( 'msg_', true );
     $message_data['timestamp'] = current_time( 'mysql' );
     $message_data['read'] = false;
+    if ( empty( $message_data['role'] ) ) {
+        $message_data['role'] = ( isset( $message_data['sender'] ) && 'agent' === $message_data['sender'] ) ? 'admin' : 'user';
+    }
 
     $messages[] = $message_data;
 

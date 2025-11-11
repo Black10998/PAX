@@ -318,6 +318,12 @@
     flex-wrap: wrap;
 }
 
+.pax-session-card-subtitle--muted {
+    opacity: 0.7;
+    font-size: 11px;
+    display: block;
+}
+
 .pax-session-card-footer {
     display: flex;
     justify-content: space-between;

@@ -244,7 +244,6 @@ function pax_sup_enqueue_public_assets() {
                 'statusError' => __( 'Unable to connect to a live agent right now.', 'pax-support-pro' ),
             ),
         ),
-        'nonce'  => wp_create_nonce( 'wp_rest' ),
         'isLoggedIn' => is_user_logged_in(),
         'loginUrl'   => esc_url_raw( $login_url ),
         'aiEnabled'  => ! empty( $options['ai_assistant_enabled'] ),
@@ -271,7 +270,25 @@ function pax_sup_enqueue_public_assets() {
         ),
     );
 
+    $rest_nonce = wp_create_nonce( 'wp_rest' );
+    $localize['nonce'] = $rest_nonce;
+
     wp_localize_script( 'pax-support-pro', 'paxSupportPro', $localize );
+
+    wp_localize_script(
+        'pax-live-agent-addon',
+        'PAX_LIVE',
+        array(
+            'restBase' => esc_url_raw( rest_url( 'pax/v1' ) ),
+            'nonce'    => $rest_nonce,
+            'strings'  => array(
+                'connecting' => __( 'Connecting to an agent…', 'pax-support-pro' ),
+                'queued'     => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
+                'connected'  => __( 'Agent connected!', 'pax-support-pro' ),
+                'typeHere'   => __( 'Type your message…', 'pax-support-pro' ),
+            ),
+        )
+    );
     
     // v5.5.3: Add inline script to dispatch settings-ready event
     $inline_script = "

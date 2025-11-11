@@ -674,6 +674,8 @@
                     timeout: null
                 }
             };
+            this.liveConfig = window.PAX_LIVE || {};
+            this.liveRestBase = null;
             this.replyToMessage = null;
             this.pollInterval = null;
             this.isPolling = false;
@@ -2384,7 +2386,7 @@
             // Update input placeholder
             if (this.inputField) {
                 const assistantPlaceholder = window.paxSupportPro?.strings?.assistantPlaceholder || 'Ask me anything...';
-                const liveagentPlaceholder = this.getLiveAgentString('typeMessage', 'Type your message...');
+                const liveagentPlaceholder = this.getLiveAgentString('typeHere', 'Type your message…');
                 this.inputField.placeholder = mode === 'liveagent'
                     ? liveagentPlaceholder
                     : assistantPlaceholder;
@@ -2520,6 +2522,35 @@
             this.sessions.liveagent.onboardingVisible = false;
         }
 
+        getLiveRestBase() {
+            if (!this.liveRestBase) {
+                const raw = this.liveConfig.restBase
+                    || window.paxSupportPro?.rest?.base
+                    || `${window.location.origin}/wp-json/pax/v1/`;
+                this.liveRestBase = raw.replace(/\/?$/, '/');
+            }
+            return this.liveRestBase;
+        }
+
+        getLiveNonce() {
+            return this.liveConfig.nonce || window.paxSupportPro?.nonce || '';
+        }
+
+        buildLiveUrl(path) {
+            const base = this.getLiveRestBase();
+            const sanitized = path.replace(/^\/+/, '');
+            return `${base}${sanitized}`;
+        }
+
+        buildLiveHeaders(extra = {}) {
+            const headers = Object.assign({}, extra);
+            const nonce = this.getLiveNonce();
+            if (nonce) {
+                headers['X-WP-Nonce'] = nonce;
+            }
+            return headers;
+        }
+
         syncLiveAgentStatus() {
             if (typeof this.hideLiveBanner === 'function' && this.currentMode !== 'liveagent') {
                 this.hideLiveBanner();
@@ -2541,6 +2572,10 @@
         }
 
         getLiveAgentString(key, fallback = '') {
+            const liveStrings = (this.liveConfig && this.liveConfig.strings) ? this.liveConfig.strings : null;
+            if (liveStrings && Object.prototype.hasOwnProperty.call(liveStrings, key)) {
+                return liveStrings[key] || fallback;
+            }
             return window.paxSupportPro?.strings?.liveagent?.[key] || fallback;
         }
 
@@ -2659,15 +2694,16 @@
                 throw new Error('No active Live Agent session');
             }
 
-            const response = await fetch(window.paxSupportPro.rest.liveagent.send, {
+            const response = await fetch(this.buildLiveUrl('live/message'), {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': window.paxSupportPro.nonce
-                },
+                headers: this.buildLiveHeaders({
+                    'Content-Type': 'application/json'
+                }),
+                credentials: 'same-origin',
+                cache: 'no-store',
                 body: JSON.stringify({
                     session_id: sessionId,
-                    message: message,
+                    content: message,
                     reply_to: replyTo ? replyTo.id : null
                 })
             });
@@ -2688,22 +2724,16 @@
             }
 
             try {
-                const endpoint = window.paxSupportPro?.rest?.liveagent?.create
-                    || (window.paxSupportPro?.rest?.base ? window.paxSupportPro.rest.base + 'live/session' : null);
-
-                if (!endpoint) {
-                    console.error('Live Agent endpoint not configured');
-                    return;
-                }
-
+                const endpoint = this.buildLiveUrl('live/session');
                 const currentUser = window.paxSupportPro?.currentUser || {};
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-WP-Nonce': window.paxSupportPro.nonce
-                    },
+                    headers: this.buildLiveHeaders({
+                        'Content-Type': 'application/json'
+                    }),
+                    credentials: 'same-origin',
+                    cache: 'no-store',
                     body: JSON.stringify({
                         user_meta: {
                             id: currentUser?.id || 0,
@@ -2723,6 +2753,7 @@
                     this.sessions.liveagent.status = sessionSummary.status || data.status || 'pending';
                     this.sessions.liveagent.userName = sessionSummary.user_name || sessionSummary.userName || this.sessions.liveagent.userName;
                     this.sessions.liveagent.userEmail = sessionSummary.user_email || sessionSummary.userEmail || this.sessions.liveagent.userEmail;
+                    this.sessions.liveagent.restBase = this.getLiveRestBase();
                     this.saveState();
                     console.log('Live Agent session created:', this.sessions.liveagent.sessionId);
                     if (typeof this.syncLiveAgentStatus === 'function') {
@@ -2731,6 +2762,7 @@
                 } else if (data.session_id) {
                     this.sessions.liveagent.sessionId = data.session_id;
                     this.sessions.liveagent.status = data.status || 'pending';
+                    this.sessions.liveagent.restBase = this.getLiveRestBase();
                     this.saveState();
                     console.log('Live Agent session created:', data.session_id);
                     if (typeof this.syncLiveAgentStatus === 'function') {
@@ -2767,10 +2799,11 @@
             if (!this.sessions.liveagent.sessionId) return;
 
             try {
-                const response = await fetch(window.paxSupportPro.rest.liveagent.poll + '?session_id=' + this.sessions.liveagent.sessionId, {
-                    headers: {
-                        'X-WP-Nonce': window.paxSupportPro.nonce
-                    }
+                const url = this.buildLiveUrl(`live/messages?session_id=${encodeURIComponent(this.sessions.liveagent.sessionId)}`);
+                const response = await fetch(url, {
+                    headers: this.buildLiveHeaders(),
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
 
                 const data = await response.json();

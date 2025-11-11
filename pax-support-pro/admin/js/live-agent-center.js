@@ -203,7 +203,7 @@
                 clearInterval(this.state.polling.sessions);
             }
             this.fetchSessions();
-            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 2500);
+            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 3000);
         }
 
         startMessagePolling() {
@@ -213,7 +213,7 @@
             if (!this.state.selectedSessionId) {
                 return;
             }
-            this.state.polling.messages = window.setInterval(() => this.fetchMessages(true), 2000);
+            this.state.polling.messages = window.setInterval(() => this.fetchMessages(true), 3000);
         }
 
         async fetchSessions(initial = false) {
@@ -311,7 +311,23 @@
 
             const subtitle = document.createElement('div');
             subtitle.className = 'pax-session-card-subtitle';
+            const metaPieces = [];
+            if (session.user_email) {
+                metaPieces.push(session.user_email);
+            }
+            if (session.domain) {
+                metaPieces.push(session.domain);
+            }
+            if (session.auth_plugin && session.auth_plugin !== 'core') {
+                metaPieces.push(`Auth: ${session.auth_plugin}`);
+            }
+            metaPieces.push(this.formatRelativeTime(session.last_activity));
+            subtitle.textContent = metaPieces.filter(Boolean).join(' • ');
+            headerText.appendChild(subtitle);
+
             if (session.page_url) {
+                const pathLine = document.createElement('div');
+                pathLine.className = 'pax-session-card-subtitle pax-session-card-subtitle--muted';
                 let label = session.page_url;
                 try {
                     const parsed = new URL(session.page_url, window.location.origin);
@@ -319,11 +335,9 @@
                 } catch (error) {
                     // Keep original label
                 }
-                subtitle.appendChild(document.createTextNode(label));
-                subtitle.appendChild(document.createElement('span')).textContent = '•';
+                pathLine.textContent = label;
+                headerText.appendChild(pathLine);
             }
-            subtitle.appendChild(document.createTextNode(this.formatRelativeTime(session.last_activity)));
-            headerText.appendChild(subtitle);
             header.appendChild(headerText);
             card.appendChild(header);
 
@@ -485,6 +499,12 @@
                 if (session.user_email) {
                     parts.push(session.user_email);
                 }
+                if (session.domain) {
+                    parts.push(session.domain);
+                }
+                if (session.auth_plugin && session.auth_plugin !== 'core') {
+                    parts.push(`Auth: ${session.auth_plugin}`);
+                }
                 if (session.user_ip) {
                     parts.push(session.user_ip);
                 }
@@ -585,6 +605,20 @@
                 tags.push({
                     label: `${session.unread_count} ${this.config.strings?.unread || 'Unread'}`,
                     variant: 'primary'
+                });
+            }
+
+            if (session.domain) {
+                tags.push({
+                    label: session.domain,
+                    variant: 'secondary'
+                });
+            }
+
+            if (session.auth_plugin && session.auth_plugin !== 'core') {
+                tags.push({
+                    label: `Auth: ${session.auth_plugin}`,
+                    variant: 'secondary'
                 });
             }
 
@@ -1002,7 +1036,7 @@
 
         async request(url, options) {
             const headers = new Headers(options?.headers || {});
-            if (!options?.isForm) {
+            if (!options?.isForm && options?.method && options.method.toUpperCase() !== 'GET') {
                 headers.set('Content-Type', 'application/json');
             }
             if (this.config.nonce) {
@@ -1011,7 +1045,9 @@
 
             const fetchOptions = {
                 method: options?.method || 'GET',
-                headers
+                headers,
+                credentials: 'same-origin',
+                cache: 'no-store'
             };
 
             if (options?.body) {

@@ -3,7 +3,38 @@
  * Instant connect UI with real routing
  */
 
+const PAX_LIVE_CONFIG = window.PAX_LIVE || {};
+const PAX_LIVE_REST_BASE = (() => {
+    const raw = PAX_LIVE_CONFIG.restBase
+        || window.paxSupportPro?.rest?.base
+        || `${window.location.origin}/wp-json/pax/v1/`;
+    return raw.replace(/\/?$/, '/');
+})();
+
+const PAX_LIVE_ROUTES = {
+    base: PAX_LIVE_REST_BASE,
+    session: `${PAX_LIVE_REST_BASE}live/session`,
+    status: `${PAX_LIVE_REST_BASE}live/status`,
+    message: `${PAX_LIVE_REST_BASE}live/message`,
+    messages: `${PAX_LIVE_REST_BASE}live/messages`
+};
+
+const PAX_LIVE_NONCE = PAX_LIVE_CONFIG.nonce || window.paxSupportPro?.nonce || '';
+const PAX_LIVE_STRINGS = Object.assign(
+    {
+        connecting: 'Connecting to an agent…',
+        queued: 'You are now in queue, please wait…',
+        connected: 'Agent connected!',
+        typeHere: 'Type your message…',
+        statusError: 'Unable to connect to a live agent right now.'
+    },
+    PAX_LIVE_CONFIG.strings || {}
+);
+
 const paxLiveAgentText = (key, fallback) => {
+    if (PAX_LIVE_STRINGS && Object.prototype.hasOwnProperty.call(PAX_LIVE_STRINGS, key)) {
+        return PAX_LIVE_STRINGS[key] || fallback;
+    }
     if (window.paxSupportPro && window.paxSupportPro.strings && window.paxSupportPro.strings.liveagent) {
         return window.paxSupportPro.strings.liveagent[key] || fallback;
     }
@@ -35,7 +66,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
 
         if (this.inputField) {
             this.inputField.disabled = true;
-            this.inputField.placeholder = paxLiveAgentText('statusConnecting', 'Connecting to an agent…');
+            this.inputField.placeholder = paxLiveAgentText('connecting', 'Connecting to an agent…');
         }
 
         this.disableAIFeatures();
@@ -44,8 +75,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             window.paxSupportPro.aiEnabled = false;
         }
 
-        const restBase = window.paxSupportPro?.rest?.base || window.location.origin + '/wp-json/pax/v1/';
-        const createEndpoint = window.paxSupportPro?.rest?.liveagent?.create || (restBase + 'live/session');
+        const restBase = PAX_LIVE_ROUTES.base;
+        const createEndpoint = PAX_LIVE_ROUTES.session;
         const currentUser = window.paxSupportPro?.currentUser || {};
 
         this.sessions.liveagent.restBase = restBase;
@@ -54,8 +85,10 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': window.paxSupportPro?.nonce || ''
+                'X-WP-Nonce': PAX_LIVE_NONCE
             },
+            credentials: 'same-origin',
+            cache: 'no-store',
             body: JSON.stringify({
                 user_meta: {
                     id: currentUser?.id || 0,
@@ -68,7 +101,25 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         })
         .then(response => response.json())
         .then(data => {
-            if (data.session_id) {
+            if (data.success && data.session) {
+                this.sessions.liveagent.sessionId = data.session.id || data.session_id;
+                this.sessions.liveagent.status = data.session.status || data.status || 'pending';
+                this.sessions.liveagent.userName = data.session.user_name || this.sessions.liveagent.userName;
+                this.sessions.liveagent.userEmail = data.session.user_email || this.sessions.liveagent.userEmail;
+                this.saveState();
+
+                this.showLiveBanner('queue');
+
+                if (typeof this.startPolling === 'function') {
+                    this.startPolling();
+                } else if (typeof this.startLivePolling === 'function') {
+                    this.startLivePolling();
+                }
+
+                this.sessions.liveagent.timeout = setTimeout(() => {
+                    this.handleLiveTimeout();
+                }, 300000);
+            } else if (data.session_id) {
                 this.sessions.liveagent.sessionId = data.session_id;
                 this.sessions.liveagent.status = data.status || 'pending';
                 this.saveState();
@@ -92,11 +143,11 @@ if (typeof PAXUnifiedChat !== 'undefined') {
                 throw new Error('Failed to create session');
             }
         })
-        .catch(error => {
-            console.error('PAX-LIVE: Error starting session:', error);
-            this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
-            this.returnToAI();
-        });
+            .catch(error => {
+                console.error('PAX-LIVE: Error starting session:', error);
+                this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
+                this.returnToAI();
+            });
     };
     
     PAXUnifiedChat.prototype.startLivePolling = function() {
@@ -105,21 +156,23 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         this.isPolling = true;
         this.pollInterval = setInterval(() => {
             this.pollLiveStatus();
-        }, 2000);
+        }, 3000);
         
         // Initial poll
         this.pollLiveStatus();
     };
     
     PAXUnifiedChat.prototype.pollLiveStatus = function() {
-        if (!this.sessions.liveagent.sessionId || !this.sessions.liveagent.restBase) return;
+        if (!this.sessions.liveagent.sessionId) return;
         
-        const url = this.sessions.liveagent.restBase + 'live/status?session_id=' + this.sessions.liveagent.sessionId;
+        const url = `${PAX_LIVE_ROUTES.status}?session_id=${encodeURIComponent(this.sessions.liveagent.sessionId)}`;
         
         fetch(url, {
             headers: {
-                'X-WP-Nonce': window.paxSupportPro?.nonce || ''
-            }
+                'X-WP-Nonce': PAX_LIVE_NONCE
+            },
+            credentials: 'same-origin',
+            cache: 'no-store'
         })
         .then(response => response.json())
         .then(data => {
@@ -147,7 +200,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
 
             if (this.inputField) {
                 this.inputField.disabled = false;
-                this.inputField.placeholder = paxLiveAgentText('typeMessage', 'Type your message...');
+                this.inputField.placeholder = paxLiveAgentText('typeHere', 'Type your message…');
             }
 
             this.saveState();
@@ -216,8 +269,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             throw new Error('Session not accepted yet');
         }
         
-        const endpoint = window.paxSupportPro?.rest?.liveagent?.send
-            || (this.sessions.liveagent.restBase ? this.sessions.liveagent.restBase + 'live/message' : '');
+        const endpoint = `${PAX_LIVE_ROUTES.message}`;
 
         if (!endpoint) {
             throw new Error('Live agent endpoint not configured');
@@ -227,11 +279,13 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': window.paxSupportPro?.nonce || ''
+                'X-WP-Nonce': PAX_LIVE_NONCE
             },
+            credentials: 'same-origin',
+            cache: 'no-store',
             body: JSON.stringify({
                 session_id: this.sessions.liveagent.sessionId,
-                message: message
+                content: message
             })
         })
         .then(response => response.json())
@@ -271,15 +325,15 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         </svg>`;
         
         if (state === 'connecting') {
-            const message = customMessage || paxLiveAgentText('statusConnecting', 'Connecting to an agent…');
+            const message = customMessage || paxLiveAgentText('connecting', 'Connecting to an agent…');
             banner.innerHTML = `${spinner} <span>${message}</span>`;
             banner.className = 'pax-live-banner pax-live-connecting';
         } else if (state === 'queue') {
-            const message = customMessage || paxLiveAgentText('statusQueue', 'You are now in queue, please wait…');
+            const message = customMessage || paxLiveAgentText('queued', 'You are now in queue, please wait…');
             banner.innerHTML = `${spinner} <span>${message}</span>`;
             banner.className = 'pax-live-banner pax-live-queue';
         } else if (state === 'connected') {
-            const message = customMessage || paxLiveAgentText('statusConnected', 'Agent connected!');
+            const message = customMessage || paxLiveAgentText('connected', 'Agent connected!');
             banner.innerHTML = `<span class="pax-live-badge">●</span> <span>${message}</span>`;
             banner.className = 'pax-live-banner pax-live-connected';
         } else if (state === 'error') {
