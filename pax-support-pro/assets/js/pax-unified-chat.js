@@ -2836,8 +2836,11 @@
                 }
             } catch (error) {
                 console.error('Error creating Live Agent session:', error);
-                if (typeof this.hideLiveBanner === 'function') {
-                    this.hideLiveBanner();
+                if (typeof this.showLiveBanner === 'function') {
+                    this.showLiveBanner('error', this.getLiveAgentString('statusError', 'Unable to connect right now. Please try again.'));
+                }
+                if (typeof this.stopPolling === 'function') {
+                    this.stopPolling();
                 }
             }
         }

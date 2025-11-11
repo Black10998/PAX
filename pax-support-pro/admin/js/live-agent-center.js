@@ -22,6 +22,19 @@
         fileUpload: config.rest.fileUpload
     };
 
+    const HEADERS = (withJson = true) => {
+        const headers = {};
+        if (withJson) {
+            headers['Content-Type'] = 'application/json';
+        }
+        const nonce = window.PAX_LIVE?.nonce || config.nonce || '';
+        if (nonce) {
+            headers['X-WP-Nonce'] = nonce;
+        }
+        headers['Cache-Control'] = 'no-store';
+        return headers;
+    };
+
     class LiveAgentCenter {
         constructor(cfg) {
             this.config = cfg;
@@ -238,9 +251,7 @@
             try {
                 const response = await fetch(`${API_BASE}live/sessions?limit=30`, {
                     method: 'GET',
-                    headers: {
-                        'X-WP-Nonce': window.PAX_LIVE?.nonce || this.config.nonce || ''
-                    },
+                    headers: HEADERS(false),
                     credentials: 'same-origin',
                     cache: 'no-store'
                 });
@@ -666,12 +677,12 @@
                 const accept = this.createHeaderButton('button button-primary', this.config.strings?.accept || 'Accept', 'dashicons-yes');
                 accept.addEventListener('click', () => this.acceptSession(session.id));
 
-                const decline = this.createHeaderButton('button', this.config.strings?.decline || 'Decline', 'dashicons-no-alt');
+                const decline = this.createHeaderButton('button button-danger', this.config.strings?.decline || 'Decline', 'dashicons-no-alt');
                 decline.addEventListener('click', () => this.declineSession(session.id));
 
                 this.elements.actionBar.append(accept, decline);
             } else if (session.status === 'active') {
-                const close = this.createHeaderButton('button button-secondary', this.config.strings?.close || 'End Session', 'dashicons-no-alt');
+                const close = this.createHeaderButton('button button-danger', this.config.strings?.close || 'End Session', 'dashicons-no-alt');
                 close.addEventListener('click', () => this.closeSession(session.id));
                 this.elements.actionBar.append(close);
             }
@@ -1061,18 +1072,9 @@
 
             this.elements.pingStatus.textContent = testing;
             try {
-                const headers = new Headers();
-                const liveNonce = window.PAX_LIVE?.nonce || this.config.nonce;
-                if (liveNonce) {
-                    headers.set('X-WP-Nonce', liveNonce);
-                }
-                if (window.PAX_LIVE?.noStore) {
-                    headers.set('Cache-Control', 'no-store');
-                }
-
                 const response = await fetch(`${REST_ROUTES.status}?healthcheck=1`, {
                     method: 'GET',
-                    headers,
+                    headers: HEADERS(false),
                     credentials: 'same-origin',
                     cache: 'no-store'
                 });
@@ -1143,16 +1145,14 @@
         }
 
         async request(url, options) {
-            const headers = new Headers(options?.headers || {});
-            if (!options?.isForm && options?.method && options.method.toUpperCase() !== 'GET') {
-                headers.set('Content-Type', 'application/json');
-            }
-            const liveNonce = window.PAX_LIVE?.nonce || this.config.nonce;
-            if (liveNonce) {
-                headers.set('X-WP-Nonce', liveNonce);
-            }
-            if (window.PAX_LIVE?.noStore) {
-                headers.set('Cache-Control', 'no-store');
+            const expectsJson = !options?.isForm && options?.method && options.method.toUpperCase() !== 'GET';
+            const headers = new Headers(HEADERS(expectsJson));
+            if (options?.headers) {
+                Object.entries(options.headers).forEach(([key, value]) => {
+                    if (typeof value !== 'undefined') {
+                        headers.set(key, value);
+                    }
+                });
             }
 
             const fetchOptions = {

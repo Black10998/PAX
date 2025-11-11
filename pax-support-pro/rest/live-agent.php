@@ -96,14 +96,18 @@ function pax_live_agent_start( $request ) {
     $resolved_name  = $has_wp_user ? ( $current_user->display_name ?: $current_user->user_login ) : sanitize_text_field( $user_meta['name'] ?? __( 'Guest', 'pax-support-pro' ) );
     $resolved_email = $has_wp_user ? $current_user->user_email : sanitize_email( $user_meta['email'] ?? '' );
 
-    $page_url  = isset( $request['page_url'] ) ? esc_url_raw( $request['page_url'] ) : '';
-    $domain    = wp_parse_url( home_url(), PHP_URL_HOST );
-    $auth_plugin = (
-        ( function_exists( 'ppress_is_profilepress_active' ) || defined( 'PROFILEPRESS_VERSION' ) ) ? 'profilepress' :
-        ( function_exists( 'wc' ) || class_exists( 'WooCommerce' ) ) ? 'woocommerce' :
-        ( function_exists( 'um_user' ) || defined( 'UM_VERSION' ) ) ? 'ultimatemember' :
-        'core'
-    );
+    $page_url = isset( $request['page_url'] ) ? esc_url_raw( $request['page_url'] ) : '';
+    $domain   = wp_parse_url( home_url(), PHP_URL_HOST );
+
+    if ( function_exists( 'ppress_is_profilepress_active' ) || defined( 'PROFILEPRESS_VERSION' ) ) {
+        $auth_plugin = 'profilepress';
+    } elseif ( function_exists( 'wc' ) || class_exists( 'WooCommerce' ) ) {
+        $auth_plugin = 'woocommerce';
+    } elseif ( function_exists( 'um_user' ) || defined( 'UM_VERSION' ) ) {
+        $auth_plugin = 'ultimatemember';
+    } else {
+        $auth_plugin = 'core';
+    }
 
     $now = current_time( 'mysql' );
 
@@ -133,7 +137,7 @@ function pax_live_agent_start( $request ) {
         $session['user_name'] = $resolved_name ?: __( 'Guest', 'pax-support-pro' );
     }
 
-    error_log( '[PAX LIVE] create sid=' . $session_id . ' user=' . intval( $session_payload['user_id'] ) . ' auth=' . $session_payload['auth_plugin'] . ' domain=' . $session_payload['domain'] );
+    error_log( '[PAX LIVE] create sid=' . $session_id . ' user=' . intval( $session_payload['user_id'] ) . ' status=pending' );
 
     pax_notify_admin_live_agent_request( $session_id, array(
         'user_name'  => $session['user_name'] ?? $session_payload['user_name'],
@@ -233,6 +237,8 @@ function pax_live_agent_accept( $request ) {
     
     $session = pax_sup_get_liveagent_session( $session_id );
 
+    error_log( '[PAX LIVE] accept sid=' . $session_id . ' agent=' . get_current_user_id() );
+
     return rest_ensure_response( array(
         'success'    => true,
         'session'    => $session ? pax_live_agent_prepare_session_summary( $session ) : null,
@@ -271,6 +277,8 @@ function pax_live_agent_decline( $request ) {
     }
     
     $session = pax_sup_get_liveagent_session( $session_id );
+
+    error_log( '[PAX LIVE] decline sid=' . $session_id . ' agent=' . get_current_user_id() );
 
     return rest_ensure_response( array(
         'success'    => true,
@@ -387,7 +395,7 @@ function pax_live_agent_message( $request ) {
         $new_message   = end( $temp_messages );
     }
 
-    error_log( '[PAX LIVE] msg sid=' . $session_id . ' role=' . $message_data['role'] . ' len=' . strlen( $message_text ) );
+    error_log( '[PAX LIVE] msg sid=' . $session_id . ' role=' . $message_data['role'] . ' len=' . strlen( (string) $message_text ) );
 
     if ( $new_message ) {
         pax_sup_notify_new_message( $session_id, $new_message, $sender );
@@ -520,7 +528,7 @@ function pax_live_agent_list_sessions( $request ) {
         $recent_raw
     );
 
-    error_log( '[PAX LIVE] /live/sessions served uid=' . get_current_user_id() );
+    error_log( '[PAX LIVE] list_sessions uid=' . get_current_user_id() );
 
     return rest_ensure_response( array(
         'success' => true,
@@ -584,10 +592,11 @@ function pax_live_agent_close( $request ) {
         array(
             'status'        => 'closed',
             'ended_at'      => current_time( 'mysql' ),
+            'last_activity' => current_time( 'mysql' ),
             'session_notes' => $notes ? sanitize_textarea_field( $notes ) : $session['session_notes'],
         ),
         array( 'id' => $session_id ),
-        array( '%s', '%s', '%s' ),
+        array( '%s', '%s', '%s', '%s' ),
         array( '%d' )
     );
 
@@ -601,6 +610,8 @@ function pax_live_agent_close( $request ) {
     ) );
 
     $updated_session = pax_sup_get_liveagent_session( $session_id );
+
+    error_log( '[PAX LIVE] close sid=' . $session_id . ' agent=' . get_current_user_id() );
 
     return rest_ensure_response( array(
         'success'    => true,

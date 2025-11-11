@@ -1,133 +1,118 @@
 /**
- * Lightweight Live Agent widget utilities for direct REST access.
- * Ensures all requests include nonce, same-origin credentials, and no-store cache policy.
+ * Live Agent widget helpers.
+ * Ensures every REST call ships nonce headers, same-origin credentials, and no-store cache policy.
  */
 (function() {
     'use strict';
 
-    const PAX_API_ROOT = (window.wpApiSettings?.root || `${window.location.origin}/wp-json/`).replace(/\/?$/, '/');
-    const BASE = (window.PAX_LIVE?.restBase || `${PAX_API_ROOT}pax/v1/`).replace(/\/?$/, '/');
+    const BASE = (window.PAX_LIVE?.restBase || `${window.location.origin}/wp-json/pax/v1/`).replace(/\/?$/, '/');
     const NONCE = window.PAX_LIVE?.nonce || window.wpApiSettings?.nonce || '';
 
-    function buildHeaders(extra) {
-        return Object.assign(
-            {
-                'Content-Type': 'application/json',
-                'X-WP-Nonce': NONCE
-            },
-            extra || {}
-        );
+    const HEADERS = (withJson = true) => {
+        const headers = { 'X-WP-Nonce': NONCE, 'Cache-Control': 'no-store' };
+        if (withJson) {
+            headers['Content-Type'] = 'application/json';
+        }
+        return headers;
+    };
+
+    function showBanner(state, customText) {
+        const banner = document.querySelector('.pax-live-banner') || (function create() {
+            const el = document.createElement('div');
+            el.className = 'pax-live-banner';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            const container = document.querySelector('.pax-chat-window') || document.querySelector('#pax-chat');
+            if (container) {
+                container.prepend(el);
+            }
+            return el;
+        }());
+
+        if (!banner) {
+            return;
+        }
+
+        const dots = '<span class="pax-conn-dot"></span><span class="pax-conn-dot"></span><span class="pax-conn-dot"></span>';
+        const strings = window.PAX_LIVE?.strings || {};
+        let text = customText || '';
+
+        if (state === 'connecting') {
+            text = text || strings.connecting || 'Connecting to support…';
+            banner.className = 'pax-live-banner pax-live-connecting';
+            banner.innerHTML = `${dots}<span>${text}</span>`;
+        } else if (state === 'queue') {
+            text = text || strings.queued || 'You are now in queue, please wait…';
+            banner.className = 'pax-live-banner pax-live-queue';
+            banner.innerHTML = `${dots}<span>${text}</span>`;
+        } else if (state === 'connected') {
+            text = text || strings.connected || 'Agent connected!';
+            banner.className = 'pax-live-banner pax-live-connected';
+            banner.textContent = text;
+        } else if (state === 'error') {
+            text = text || strings.statusError || 'Unable to connect right now. Please try again.';
+            banner.className = 'pax-live-banner pax-live-error';
+            banner.textContent = text;
+        } else if (state === 'hide') {
+            banner.remove();
+        }
     }
 
-    async function createSession() {
-        const payload = {
-            page_url: window.location.href,
-            user_agent: navigator.userAgent
-        };
+    async function ensureSession(cache) {
+        if (cache?.sessionId) {
+            return cache;
+        }
 
         const response = await fetch(`${BASE}live/session`, {
             method: 'POST',
-            headers: buildHeaders(),
-            credentials: 'same-origin',
-            cache: 'no-store',
-            body: JSON.stringify(payload)
-        });
-
-        const data = await response.json();
-        console.log('[PAX-STATE] Session bootstrap:', data);
-        return data;
-    }
-
-    async function acceptSession(sessionId) {
-        const response = await fetch(`${BASE}live/accept`, {
-            method: 'POST',
-            headers: buildHeaders(),
-            credentials: 'same-origin',
-            cache: 'no-store',
-            body: JSON.stringify({ session_id: sessionId })
-        });
-
-        const data = await response.json();
-        console.log('[PAX-STATE] Session accepted:', data);
-        return data;
-    }
-
-    async function paxSendMessage(sessionId, message, from = 'user') {
-        const response = await fetch(`${BASE}live/message`, {
-            method: 'POST',
-            headers: buildHeaders(),
+            headers: HEADERS(),
             credentials: 'same-origin',
             cache: 'no-store',
             body: JSON.stringify({
-                session_id: sessionId,
-                content: message,
-                sender: from
+                page_url: window.location.href,
+                user_agent: navigator.userAgent
             })
         });
 
         const data = await response.json();
-        console.log('[PAX-CHAT] Message sent:', data);
-        return data;
-    }
-
-    async function paxPollStatus(sessionId) {
-        try {
-            const response = await fetch(`${BASE}live/messages?session_id=${encodeURIComponent(sessionId)}`, {
-                method: 'GET',
-                headers: {
-                    'X-WP-Nonce': NONCE
-                },
-                credentials: 'same-origin',
-                cache: 'no-store'
-            });
-
-            const data = await response.json();
-            console.log('[PAX-CHAT] Poll update:', data);
-
-            if (data.messages) {
-                updateChatUI(data.messages);
-            }
-
-            return data;
-        } catch (error) {
-            console.error('[PAX-ERROR] Poll failed', error);
-            throw error;
-        }
-    }
-
-    function startPolling(sessionId, interval = 3000) {
-        paxPollStatus(sessionId);
-        return window.setInterval(() => paxPollStatus(sessionId), interval);
-    }
-
-    function updateChatUI(messages) {
-        const chatBox = document.querySelector('#pax-chat-messages, #pax-liveagent-messages');
-        if (!chatBox) {
-            return;
+        if (data?.success && (data.session?.id || data.session_id)) {
+            return {
+                sessionId: data.session?.id || data.session_id,
+                status: data.session?.status || data.status || 'pending'
+            };
         }
 
-        chatBox.innerHTML = '';
-        messages.forEach((msg) => {
-            const div = document.createElement('div');
-            const sender = msg.sender || msg.from || 'user';
-            div.className = sender === 'agent' || sender === 'admin' ? 'pax-msg-admin' : 'pax-msg-user';
-            div.textContent = `${sender}: ${msg.message || msg.content || ''}`;
-            chatBox.appendChild(div);
+        showBanner('error', window.PAX_LIVE?.strings?.statusError);
+        throw new Error(data?.message || 'Failed to create session');
+    }
+
+    async function sendMessage(sessionId, content) {
+        const response = await fetch(`${BASE}live/message`, {
+            method: 'POST',
+            headers: HEADERS(),
+            credentials: 'same-origin',
+            cache: 'no-store',
+            body: JSON.stringify({ session_id: sessionId, content })
         });
+        return response.json();
     }
 
-    async function initChat(sessionId) {
-        await acceptSession(sessionId);
-        return startPolling(sessionId);
+    async function fetchMessages(sessionId) {
+        const response = await fetch(`${BASE}live/messages?session_id=${encodeURIComponent(sessionId)}`, {
+            method: 'GET',
+            headers: HEADERS(false),
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+        return response.json();
     }
 
     window.PAXLiveWidget = {
-        createSession,
-        acceptSession,
-        paxSendMessage,
-        paxPollStatus,
-        startPolling,
-        updateChatUI,
-        initChat
+        BASE,
+        HEADERS,
+        ensureSession,
+        sendMessage,
+        fetchMessages,
+        showBanner
     };
 })();

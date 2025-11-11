@@ -288,6 +288,7 @@ function pax_sup_enqueue_public_assets() {
                 'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
                 'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
                 'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
+                'statusError' => __( 'Unable to connect right now. Please try again.', 'pax-support-pro' ),
                 'newRequest'  => __( 'New live request', 'pax-support-pro' ),
                 'newMessage'  => __( 'New message', 'pax-support-pro' ),
             ),
