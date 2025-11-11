@@ -54,7 +54,7 @@ function pax_register_live_agent_routes() {
 
     register_rest_route( 'pax/v1', '/live/messages', array(
         'methods'             => 'GET',
-        'callback'            => 'pax_live_agent_get_messages',
+        'callback'            => 'pax_live_agent_messages_stream',
         'permission_callback' => '__return_true',
     ) );
 
@@ -81,6 +81,39 @@ function pax_register_live_agent_routes() {
             return current_user_can( 'manage_options' ) || current_user_can( 'manage_pax_chats' );
         },
     ) );
+
+    register_rest_route( 'pax/v1', '/live/rate', array(
+        'methods'             => 'POST',
+        'callback'            => 'pax_live_agent_session_rate',
+        'permission_callback' => '__return_true',
+    ) );
+}
+
+function pax_live_agent_nocache() {
+    nocache_headers();
+    header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+    header( 'Pragma: no-cache' );
+}
+
+function pax_live_agent_bootstrap_payload( $request ) {
+    $page_url = isset( $request['page_url'] ) ? esc_url_raw( $request['page_url'] ) : '';
+    $domain   = wp_parse_url( home_url(), PHP_URL_HOST );
+
+    if ( function_exists( 'ppress_is_profilepress_active' ) || defined( 'PROFILEPRESS_VERSION' ) ) {
+        $auth_plugin = 'profilepress';
+    } elseif ( function_exists( 'wc' ) || class_exists( 'WooCommerce' ) ) {
+        $auth_plugin = 'woocommerce';
+    } elseif ( function_exists( 'um_user' ) || defined( 'UM_VERSION' ) ) {
+        $auth_plugin = 'ultimatemember';
+    } else {
+        $auth_plugin = 'core';
+    }
+
+    return array(
+        'page_url'    => $page_url,
+        'domain'      => sanitize_text_field( $domain ),
+        'auth_plugin' => $auth_plugin,
+    );
 }
 
 function pax_live_agent_start( $request ) {
@@ -96,19 +129,7 @@ function pax_live_agent_start( $request ) {
     $resolved_name  = $has_wp_user ? ( $current_user->display_name ?: $current_user->user_login ) : sanitize_text_field( $user_meta['name'] ?? __( 'Guest', 'pax-support-pro' ) );
     $resolved_email = $has_wp_user ? $current_user->user_email : sanitize_email( $user_meta['email'] ?? '' );
 
-    $page_url = isset( $request['page_url'] ) ? esc_url_raw( $request['page_url'] ) : '';
-    $domain   = wp_parse_url( home_url(), PHP_URL_HOST );
-
-    if ( function_exists( 'ppress_is_profilepress_active' ) || defined( 'PROFILEPRESS_VERSION' ) ) {
-        $auth_plugin = 'profilepress';
-    } elseif ( function_exists( 'wc' ) || class_exists( 'WooCommerce' ) ) {
-        $auth_plugin = 'woocommerce';
-    } elseif ( function_exists( 'um_user' ) || defined( 'UM_VERSION' ) ) {
-        $auth_plugin = 'ultimatemember';
-    } else {
-        $auth_plugin = 'core';
-    }
-
+    $bootstrap = pax_live_agent_bootstrap_payload( $request );
     $now = current_time( 'mysql' );
 
     $session_payload = array(
@@ -118,9 +139,9 @@ function pax_live_agent_start( $request ) {
         'user_email'  => $resolved_email,
         'user_ip'     => pax_sup_get_client_ip(),
         'user_agent'  => isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 255 ) : '',
-        'page_url'    => $page_url,
-        'domain'      => sanitize_text_field( $domain ),
-        'auth_plugin' => $auth_plugin,
+        'page_url'    => $bootstrap['page_url'],
+        'domain'      => $bootstrap['domain'],
+        'auth_plugin' => $bootstrap['auth_plugin'],
         'source'      => 'widget',
         'messages'    => array(),
         'last_activity' => $now,
@@ -409,61 +430,86 @@ function pax_live_agent_message( $request ) {
     ) );
 }
 
-function pax_live_agent_get_messages( $request ) {
-    nocache_headers();
-
+function pax_live_agent_messages_stream( $request ) {
     if ( ! pax_live_agent_verify_nonce( $request ) ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
+    pax_live_agent_nocache();
+
     $session_id = (int) $request->get_param( 'session_id' );
-
     if ( ! $session_id ) {
-        return new WP_Error( 'missing_param', __( 'Session ID required.', 'pax-support-pro' ), array( 'status' => 400 ) );
+        return rest_ensure_response( array( 'success' => false, 'messages' => array() ) );
     }
 
-    $session = pax_sup_get_liveagent_session( $session_id );
-    if ( ! $session ) {
-        return new WP_Error( 'not_found', __( 'Session not found.', 'pax-support-pro' ), array( 'status' => 404 ) );
+    $after = (int) $request->get_param( 'after' );
+    $wait  = (int) $request->get_param( 'wait' );
+    if ( $wait <= 0 ) {
+        $wait = 25;
     }
+    $wait = min( 25, max( 1, $wait ) );
 
-    if ( ! pax_live_agent_user_can_access_session( $session ) ) {
-        return new WP_Error( 'forbidden', __( 'You do not have permission to access this session.', 'pax-support-pro' ), array( 'status' => 403 ) );
-    }
+    $start_time = time();
+    $messages   = array();
+    $session    = null;
 
-    $messages = is_array( $session['messages'] ) ? $session['messages'] : array();
-    $after    = $request->get_param( 'after' );
+    do {
+        $session = pax_sup_get_liveagent_session( $session_id );
 
-    if ( $after ) {
-        $start_index = 0;
-        foreach ( $messages as $index => $message ) {
-            if ( isset( $message['id'] ) && $message['id'] === $after ) {
-                $start_index = $index + 1;
-                break;
-            }
+        if ( ! $session ) {
+            return new WP_Error( 'not_found', __( 'Session not found.', 'pax-support-pro' ), array( 'status' => 404 ) );
         }
-        $messages = array_slice( $messages, $start_index );
-    }
 
-    $session_messages = array();
-    if ( isset( $session['messages'] ) && is_array( $session['messages'] ) ) {
-        $session_messages = $session['messages'];
-    }
+        if ( ! pax_live_agent_user_can_access_session( $session ) ) {
+            return new WP_Error( 'forbidden', __( 'You do not have permission to access this session.', 'pax-support-pro' ), array( 'status' => 403 ) );
+        }
 
-    $last_message = end( $session_messages );
-    if ( ! empty( $session_messages ) ) {
-        reset( $session_messages );
+        $all_messages = isset( $session['messages'] ) && is_array( $session['messages'] ) ? $session['messages'] : array();
+        $normalized   = pax_sup_normalize_liveagent_messages( $all_messages );
+
+        $messages = array_filter(
+            $normalized,
+            function( $message ) use ( $after ) {
+                $seq = isset( $message['seq'] ) ? (int) $message['seq'] : 0;
+                return $seq > $after;
+            }
+        );
+
+        if ( ! empty( $messages ) ) {
+            break;
+        }
+
+        usleep( 400000 );
+    } while ( ( time() - $start_time ) < $wait );
+
+    $messages = array_map(
+        function( $message ) {
+            $seq = (int) ( $message['seq'] ?? 0 );
+            return array(
+                'id'         => $seq,
+                'seq'        => $seq,
+                'role'       => $message['role'] ?? ( ( isset( $message['sender'] ) && 'agent' === $message['sender'] ) ? 'admin' : 'user' ),
+                'sender'     => $message['sender'] ?? '',
+                'content'    => $message['message'] ?? '',
+                'timestamp'  => $message['timestamp'] ?? '',
+                'created_at' => $message['created_at'] ?? ( $message['timestamp'] ?? '' ),
+                'meta'       => isset( $message['meta'] ) ? $message['meta'] : array(),
+            );
+        },
+        array_values( $messages )
+    );
+
+    $last_id = $after;
+    if ( ! empty( $messages ) ) {
+        $last_id = max( array_column( $messages, 'seq' ) );
     }
 
     return rest_ensure_response( array(
-        'success'   => true,
-        'messages'  => array_values( $messages ),
-        'total'     => isset( $session['messages'] ) && is_array( $session['messages'] ) ? count( $session['messages'] ) : 0,
-        'last_id'   => $last_message['id'] ?? null,
-        'session'   => pax_live_agent_prepare_session_summary( $session ),
-        'typing'    => pax_live_agent_get_typing_state( $session_id ),
-        'timestamp' => current_time( 'mysql' ),
+        'success'    => true,
+        'messages'   => $messages,
         'session_id' => $session_id,
+        'status'     => $session['status'],
+        'last_id'    => $last_id,
     ) );
 }
 
@@ -620,16 +666,52 @@ function pax_live_agent_close( $request ) {
     ) );
 }
 
+function pax_live_agent_session_rate( $request ) {
+    if ( ! pax_live_agent_verify_nonce( $request ) ) {
+        return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
+
+    pax_live_agent_nocache();
+
+    global $wpdb;
+
+    $session_id = (int) $request->get_param( 'session_id' );
+    $score      = max( 1, min( 5, (int) $request->get_param( 'score' ) ) );
+    $note       = sanitize_text_field( (string) $request->get_param( 'note' ) );
+
+    if ( ! $session_id || ! $score ) {
+        return rest_ensure_response( array( 'success' => false ) );
+    }
+
+    $table = $wpdb->prefix . 'pax_liveagent_sessions';
+
+    $updated = $wpdb->update(
+        $table,
+        array(
+            'rating'       => $score,
+            'rating_note'  => $note,
+            'last_activity'=> current_time( 'mysql' ),
+        ),
+        array( 'id' => $session_id ),
+        array( '%d', '%s', '%s' ),
+        array( '%d' )
+    );
+
+    if ( false === $updated ) {
+        return rest_ensure_response( array( 'success' => false ) );
+    }
+
+    return rest_ensure_response( array( 'success' => true ) );
+}
+
 function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
     $messages = array();
     if ( isset( $session['messages'] ) ) {
         if ( is_array( $session['messages'] ) ) {
-            $messages = $session['messages'];
+            $messages = pax_sup_normalize_liveagent_messages( $session['messages'] );
         } else {
             $decoded = json_decode( $session['messages'], true );
-            if ( is_array( $decoded ) ) {
-                $messages = $decoded;
-            }
+            $messages = pax_sup_normalize_liveagent_messages( $decoded );
         }
     }
 
@@ -656,6 +738,8 @@ function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
         'ended_at'      => $session['ended_at'] ?? '',
         'last_activity' => $session['last_activity'] ?? '',
         'unread_count'  => pax_live_agent_calculate_unread( $messages, $viewer ),
+        'rating'        => isset( $session['rating'] ) ? (int) $session['rating'] : null,
+        'rating_note'   => isset( $session['rating_note'] ) ? $session['rating_note'] : '',
         'avatar'        => function_exists( 'get_avatar' ) ? get_avatar( $session['user_id'] ?? 0, 48 ) : '',
         'last_message'  => $last_message ? array(
             'id'        => $last_message['id'] ?? '',
@@ -706,6 +790,14 @@ function pax_live_agent_verify_nonce( $request ) {
     }
 
     $route = $request->get_route();
+
+    if ( strpos( $route, '/live/rate' ) !== false ) {
+        return true;
+    }
+
+    if ( preg_match( '#/live/(session|message|close)$#', $route ) ) {
+        return true;
+    }
 
     if ( strpos( $route, '/live/sessions' ) !== false || strpos( $route, '/live/messages' ) !== false ) {
         return is_user_logged_in();

@@ -7,6 +7,15 @@
 
     const BASE = (window.PAX_LIVE?.restBase || `${window.location.origin}/wp-json/pax/v1/`).replace(/\/?$/, '/');
     const NONCE = window.PAX_LIVE?.nonce || window.wpApiSettings?.nonce || '';
+    const LP = {
+        controller: null,
+        lastId: 0,
+        sessionId: null,
+        dedupe: new Set(),
+        retryDelay: 400,
+        onMessage: null,
+        online: (typeof navigator === 'undefined') ? true : navigator.onLine !== false,
+    };
 
     const HEADERS = (withJson = true) => {
         const headers = { 'X-WP-Nonce': NONCE, 'Cache-Control': 'no-store' };
@@ -107,12 +116,113 @@
         return response.json();
     }
 
+    function pumpLongPoll(force = false) {
+        if (!LP.sessionId || !LP.online) {
+            return;
+        }
+
+        if (LP.controller && !force) {
+            return;
+        }
+
+        if (LP.controller) {
+            try {
+                LP.controller.abort();
+            } catch (error) {
+                // ignore
+            }
+        }
+
+        LP.controller = new AbortController();
+
+        const query = new URLSearchParams({
+            session_id: LP.sessionId,
+            after: LP.lastId,
+            wait: 25
+        });
+
+        fetch(`${BASE}live/messages?${query.toString()}`, {
+            method: 'GET',
+            headers: HEADERS(false),
+            credentials: 'same-origin',
+            cache: 'no-store',
+            signal: LP.controller.signal
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                LP.retryDelay = 50;
+                if (!data || !Array.isArray(data.messages)) {
+                    return;
+                }
+                data.messages.forEach((message) => {
+                    const id = parseInt(message.seq || message.id || 0, 10);
+                    if (!id) {
+                        return;
+                    }
+                    if (LP.dedupe.has(id)) {
+                        return;
+                    }
+                    LP.dedupe.add(id);
+                    if (LP.dedupe.size > 500) {
+                        const first = LP.dedupe.values().next().value;
+                        LP.dedupe.delete(first);
+                    }
+                    LP.lastId = Math.max(LP.lastId, id);
+                    if (typeof LP.onMessage === 'function') {
+                        LP.onMessage(message, data);
+                    }
+                });
+            })
+            .catch(() => {
+                LP.retryDelay = Math.min(LP.retryDelay * 2, 4000);
+            })
+            .finally(() => {
+                setTimeout(() => pumpLongPoll(), LP.retryDelay);
+            });
+    }
+
+    function startLongPoll(sessionId, onMessage) {
+        if (!sessionId) {
+            return;
+        }
+        LP.sessionId = sessionId;
+        LP.onMessage = typeof onMessage === 'function' ? onMessage : null;
+        LP.retryDelay = 400;
+        LP.lastId = 0;
+        LP.dedupe.clear();
+        pumpLongPoll(true);
+    }
+
+    function stopLongPoll() {
+        if (LP.controller) {
+            try {
+                LP.controller.abort();
+            } catch (error) {
+                // ignore
+            }
+            LP.controller = null;
+        }
+    }
+
+    window.addEventListener('online', () => {
+        LP.online = true;
+        pumpLongPoll(true);
+    });
+
+    window.addEventListener('offline', () => {
+        LP.online = false;
+        stopLongPoll();
+    });
+
     window.PAXLiveWidget = {
         BASE,
         HEADERS,
         ensureSession,
         sendMessage,
         fetchMessages,
-        showBanner
+        showBanner,
+        startLongPoll,
+        stopLongPoll,
+        LP
     };
 })();

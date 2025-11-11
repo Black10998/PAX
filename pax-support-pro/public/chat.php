@@ -41,6 +41,7 @@ function pax_sup_enqueue_public_assets() {
     
     // v5.1.4: Add unified Live Chat styles (depends on CSS variables)
     wp_enqueue_style( 'pax-livechat-unified', PAX_SUP_URL . 'public/css/livechat-unified.css', array( 'pax-css-variables', 'pax-google-fonts' ), PAX_SUP_VER );
+    wp_enqueue_style( 'pax-live-widget', PAX_SUP_URL . 'assets/css/pax-live-widget.css', array( 'pax-livechat-unified' ), PAX_SUP_VER );
     
     wp_enqueue_style( 'pax-support-pro', PAX_SUP_URL . 'public/assets.css', array( 'dashicons', 'pax-google-fonts', 'pax-livechat-unified' ), PAX_SUP_VER );
     wp_enqueue_script( 'pax-support-pro', PAX_SUP_URL . 'public/assets.js', array(), PAX_SUP_VER, true );
@@ -287,10 +288,17 @@ function pax_sup_enqueue_public_assets() {
                 'connecting'  => __( 'Connecting to an agent…', 'pax-support-pro' ),
                 'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
                 'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
+                'reconnecting'=> __( 'Reconnecting…', 'pax-support-pro' ),
+                'offline'     => __( 'You are offline', 'pax-support-pro' ),
                 'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
                 'statusError' => __( 'Unable to connect right now. Please try again.', 'pax-support-pro' ),
+                'closedPrompt'=> __( 'Chat closed.', 'pax-support-pro' ),
+                'actionClose' => __( 'Close chat', 'pax-support-pro' ),
+                'rateLabel'   => __( 'Rate this chat', 'pax-support-pro' ),
+                'rateScore'   => __( 'Rate', 'pax-support-pro' ),
                 'newRequest'  => __( 'New live request', 'pax-support-pro' ),
                 'newMessage'  => __( 'New message', 'pax-support-pro' ),
+                'sessionClosed' => __( 'Session closed', 'pax-support-pro' ),
             ),
             'quickPrompts' => array(
                 __( 'I need help with my order', 'pax-support-pro' ),

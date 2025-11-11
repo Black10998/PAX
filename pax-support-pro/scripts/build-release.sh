@@ -62,10 +62,11 @@ mkdir -p "$PACKAGE_DIR"
 INCLUDE_ITEMS=(
     "admin"
     "includes"
+    "assets"
     "public"
     "rest"
     "pax-support-pro.php"
-    "README.txt"
+    "readme.txt"
     "CHANGELOG.md"
 )
 

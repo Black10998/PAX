@@ -677,6 +677,14 @@
                 }
             };
             this.liveConfig = window.PAX_LIVE || {};
+            this.livePoll = {
+                controller: null,
+                lastSeq: 0,
+                dedupe: new Set(),
+                retryIn: 500,
+                online: ( typeof navigator === 'undefined' ) ? true : navigator.onLine !== false,
+            };
+            this.liveReconnectTimer = null;
             this.liveRestBase = null;
             this.replyToMessage = null;
             this.pollInterval = null;
@@ -724,6 +732,9 @@
                     inputField: !!this.inputField,
                     sendButton: !!this.sendButton
                 });
+
+                window.addEventListener('online', () => this.handleOnline());
+                window.addEventListener('offline', () => this.handleOffline());
                 
                 paxDebugLog('INIT', 'DOM elements retrieved', {
                     chatWindow: !!this.chatWindow,
@@ -2578,6 +2589,7 @@
                 if (bar && bar.parentNode) {
                     bar.parentNode.removeChild(bar);
                 }
+                this.renderLiveControls();
                 return;
             }
 
@@ -2602,6 +2614,8 @@
                 });
                 bar.appendChild(chip);
             });
+
+            this.renderLiveControls();
         }
 
         removeQuickPromptsBar() {
@@ -2611,6 +2625,85 @@
             const bar = this.chatWindow.querySelector('.pax-quick-prompts');
             if (bar && bar.parentNode) {
                 bar.parentNode.removeChild(bar);
+            }
+            this.removeLiveControls();
+        }
+
+        handleOnline() {
+            this.livePoll.online = true;
+            if (typeof this.showLiveBanner === 'function' && this.currentMode === 'liveagent') {
+                this.showLiveBanner('connecting', this.getLiveAgentString('reconnecting', 'Reconnecting…'));
+            }
+            if (this.currentMode === 'liveagent' && this.sessions.liveagent.sessionId) {
+                this.startLongPoll(true);
+            }
+        }
+
+        handleOffline() {
+            this.livePoll.online = false;
+            if (typeof this.showLiveBanner === 'function') {
+                this.showLiveBanner('error', this.getLiveAgentString('offline', 'You are offline'));
+            }
+            this.stopLongPoll();
+        }
+
+        renderLiveControls() {
+            if (this.currentMode !== 'liveagent' || !this.chatWindow) {
+                this.removeLiveControls();
+                return;
+            }
+
+            const composer = this.chatWindow.querySelector('.pax-input-area');
+            if (!composer) {
+                return;
+            }
+
+            let controls = composer.querySelector('.pax-live-actions');
+            if (!controls) {
+                controls = document.createElement('div');
+                controls.className = 'pax-live-actions';
+                controls.innerHTML = `
+                    <button type="button" class="pax-live-actions__close">
+                        ${this.getLiveAgentString('actionClose', 'Close chat')}
+                    </button>
+                    <div class="pax-live-actions__rating" role="group" aria-label="${this.getLiveAgentString('rateLabel', 'Rate this chat')}">
+                        ${[1,2,3,4,5].map((score) => `
+                            <button type="button" class="pax-rate-btn" data-score="${score}" aria-pressed="false">
+                                <span class="pax-rate-icon" aria-hidden="true">★</span>
+                                <span class="screen-reader-text">${this.getLiveAgentString('rateScore', 'Rate')} ${score}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                composer.appendChild(controls);
+
+                const closeBtn = controls.querySelector('.pax-live-actions__close');
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', () => this.closeLiveAgentSession());
+                }
+
+                controls.querySelectorAll('.pax-rate-btn').forEach((btn) => {
+                    btn.addEventListener('click', () => {
+                        const score = parseInt(btn.dataset.score, 10);
+                        this.rateLiveAgentSession(score);
+                    });
+                });
+            }
+
+            this.updateRatingButtons();
+        }
+
+        removeLiveControls() {
+            if (!this.chatWindow) {
+                return;
+            }
+            const composer = this.chatWindow.querySelector('.pax-input-area');
+            if (!composer) {
+                return;
+            }
+            const controls = composer.querySelector('.pax-live-actions');
+            if (controls && controls.parentNode) {
+                controls.parentNode.removeChild(controls);
             }
         }
 
@@ -2642,6 +2735,16 @@
             return window.paxSupportPro?.strings?.liveagent?.[key] || fallback;
         }
 
+        setComposerEnabled(enabled) {
+            if (this.inputField) {
+                this.inputField.disabled = !enabled;
+            }
+            if (this.sendButton) {
+                this.sendButton.disabled = !enabled;
+                this.sendButton.classList.toggle('button-disabled', !enabled);
+            }
+        }
+
         async handleSend() {
             if (!this.inputField || !this.inputField.value.trim()) {
                 return;
@@ -2658,12 +2761,19 @@
             const userMsg = {
                 id: Date.now(),
                 text: message,
+                message: message,
                 sender: 'user',
+                role: 'user',
                 timestamp: new Date().toISOString(),
                 replyTo: replyTo ? replyTo.id : null
             };
+            userMsg.pending = (this.currentMode === 'liveagent');
 
-            this.sessions[this.currentMode].messages.push(userMsg);
+            if (this.currentMode === 'liveagent') {
+                this.sessions.liveagent.messages.push(userMsg);
+            } else {
+                this.sessions.assistant.messages.push(userMsg);
+            }
             this.renderMessage(userMsg);
             this.scrollToBottom();
 
@@ -2787,6 +2897,15 @@
             }
 
             try {
+                try {
+                    window.dispatchEvent(new CustomEvent('pax:live-mode-on'));
+                    if (window.PAX_ASSISTANT?.pause) {
+                        window.PAX_ASSISTANT.pause();
+                    }
+                } catch (error) {
+                    // ignore assistant pause errors
+                }
+
                 const endpoint = this.buildLiveUrl('live/session');
                 const currentUser = window.paxSupportPro?.currentUser || {};
 
@@ -2810,129 +2929,343 @@
 
                 const data = await response.json();
 
-                if (data.success && data.session) {
-                    const sessionSummary = data.session;
-                    this.sessions.liveagent.sessionId = sessionSummary.id || data.session_id || this.sessions.liveagent.sessionId;
+                if (data.success && (data.session || data.session_id)) {
+                    const sessionSummary = data.session || {};
+                    const sessionId = sessionSummary.id || data.session_id;
+
+                    this.sessions.liveagent.sessionId = sessionId;
                     this.sessions.liveagent.status = sessionSummary.status || data.status || 'pending';
                     this.sessions.liveagent.userName = sessionSummary.user_name || sessionSummary.userName || this.sessions.liveagent.userName;
                     this.sessions.liveagent.userEmail = sessionSummary.user_email || sessionSummary.userEmail || this.sessions.liveagent.userEmail;
                     this.sessions.liveagent.restBase = this.getLiveRestBase();
+                    this.sessions.liveagent.rating = sessionSummary.rating || null;
+                    this.sessions.liveagent.rating_note = sessionSummary.rating_note || '';
+                    this.livePoll.lastSeq = 0;
+                    this.livePoll.dedupe.clear();
+                    this.livePoll.online = ( typeof navigator === 'undefined' ) ? true : navigator.onLine !== false;
+                    if (force) {
+                        this.sessions.liveagent.messages = [];
+                    }
+                    this.setComposerEnabled(false);
                     this.saveState();
-                    console.log('Live Agent session created:', this.sessions.liveagent.sessionId);
+
+                    console.log('Live Agent session created:', sessionId);
+
                     if (typeof this.syncLiveAgentStatus === 'function') {
                         this.syncLiveAgentStatus();
                     }
+
+                    this.showLiveBanner('queue');
                     this.renderQuickPromptsBar();
-                } else if (data.session_id) {
-                    this.sessions.liveagent.sessionId = data.session_id;
-                    this.sessions.liveagent.status = data.status || 'pending';
-                    this.sessions.liveagent.restBase = this.getLiveRestBase();
-                    this.saveState();
-                    console.log('Live Agent session created:', data.session_id);
-                    if (typeof this.syncLiveAgentStatus === 'function') {
-                        this.syncLiveAgentStatus();
-                    }
-                    this.renderQuickPromptsBar();
+                    this.startLongPoll(true);
                 }
             } catch (error) {
                 console.error('Error creating Live Agent session:', error);
                 if (typeof this.showLiveBanner === 'function') {
                     this.showLiveBanner('error', this.getLiveAgentString('statusError', 'Unable to connect right now. Please try again.'));
                 }
-                if (typeof this.stopPolling === 'function') {
-                    this.stopPolling();
-                }
+                this.stopLongPoll();
             }
         }
 
-        startPolling() {
-            if (this.isPolling) return;
+        async closeLiveAgentSession() {
+            const sessionId = this.sessions.liveagent.sessionId;
+            if (!sessionId) {
+                return;
+            }
 
+            try {
+                await fetch(this.buildLiveUrl('live/close'), {
+                    method: 'POST',
+                    headers: this.buildLiveHeaders({
+                        'Content-Type': 'application/json'
+                    }),
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    body: JSON.stringify({
+                        session_id: sessionId
+                    })
+                });
+
+                this.sessions.liveagent.status = 'closed';
+                this.setComposerEnabled(false);
+                if (typeof this.showLiveBanner === 'function') {
+                    this.showLiveBanner('queue', this.getLiveAgentString('closedPrompt', 'Chat closed.'));
+                }
+                this.stopLongPoll();
+                this.saveState();
+            } catch (error) {
+                console.error('Error closing Live Agent session:', error);
+            }
+        }
+
+        async rateLiveAgentSession(score, note = '') {
+            const sessionId = this.sessions.liveagent.sessionId;
+            if (!sessionId) {
+                return;
+            }
+
+            const normalizedScore = Math.max(1, Math.min(5, parseInt(score, 10) || 0));
+            if (!normalizedScore) {
+                return;
+            }
+
+            try {
+                await fetch(this.buildLiveUrl('live/rate'), {
+                    method: 'POST',
+                    headers: this.buildLiveHeaders({
+                        'Content-Type': 'application/json'
+                    }),
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        score: normalizedScore,
+                        note
+                    })
+                });
+
+                this.sessions.liveagent.rating = normalizedScore;
+                this.sessions.liveagent.rating_note = note;
+                this.updateRatingButtons();
+                this.saveState();
+            } catch (error) {
+                console.error('Error submitting Live Agent rating:', error);
+            }
+        }
+
+        updateRatingButtons() {
+            if (!this.chatWindow) {
+                return;
+            }
+            const composer = this.chatWindow.querySelector('.pax-input-area');
+            if (!composer) {
+                return;
+            }
+            const buttons = composer.querySelectorAll('.pax-live-actions__rating button');
+            const currentRating = this.sessions.liveagent.rating || 0;
+            buttons.forEach((btn) => {
+                const value = parseInt(btn.dataset.score, 10);
+                const selected = currentRating > 0 && value <= currentRating;
+                btn.classList.toggle('is-selected', selected);
+                btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+        }
+
+        startPolling() {
+            if (this.isPolling) {
+                return;
+            }
             this.isPolling = true;
-            this.pollInterval = setInterval(() => this.pollLiveAgentMessages(), 3000);
-            
-            // Initial poll
-            this.pollLiveAgentMessages();
+            this.startLongPoll(true);
         }
 
         stopPolling() {
-            if (this.pollInterval) {
-                clearInterval(this.pollInterval);
-                this.pollInterval = null;
+            this.stopLongPoll();
+        }
+
+        startLongPoll(force = false) {
+            if (!this.sessions.liveagent.sessionId || this.currentMode !== 'liveagent') {
+                return;
+            }
+
+            if (!this.livePoll.online) {
+                return;
+            }
+
+            if (this.livePoll.controller && !force) {
+                return;
+            }
+
+            this.isPolling = true;
+            this.livePoll.retryIn = 500;
+
+            if (this.livePoll.controller) {
+                try {
+                    this.livePoll.controller.abort();
+                } catch (error) {
+                    // ignore
+                }
+            }
+
+            const sessionId = this.sessions.liveagent.sessionId;
+            const params = new URLSearchParams({
+                session_id: sessionId,
+                after: this.livePoll.lastSeq,
+                wait: 25
+            });
+
+            this.livePoll.controller = new AbortController();
+
+            fetch(this.buildLiveUrl(`live/messages?${params.toString()}`), {
+                method: 'GET',
+                headers: this.buildLiveHeaders(),
+                credentials: 'same-origin',
+                cache: 'no-store',
+                signal: this.livePoll.controller.signal
+            })
+                .then((response) => response.json())
+                .then((data) => this.handleLongPollResponse(data))
+                .catch(() => {
+                    if (!this.livePoll.online) {
+                        return;
+                    }
+                    this.scheduleLongPoll(this.livePoll.retryIn);
+                    this.livePoll.retryIn = Math.min(this.livePoll.retryIn * 2, 5000);
+                });
+        }
+
+        stopLongPoll() {
+            if (this.livePoll.controller) {
+                try {
+                    this.livePoll.controller.abort();
+                } catch (error) {
+                    // ignore
+                }
+                this.livePoll.controller = null;
+            }
+            if (this.liveReconnectTimer) {
+                clearTimeout(this.liveReconnectTimer);
+                this.liveReconnectTimer = null;
             }
             this.isPolling = false;
         }
 
-        async pollLiveAgentMessages() {
-            if (!this.sessions.liveagent.sessionId) return;
+        scheduleLongPoll(delay = 50) {
+            if (this.liveReconnectTimer) {
+                clearTimeout(this.liveReconnectTimer);
+            }
+            this.liveReconnectTimer = setTimeout(() => {
+                this.livePoll.controller = null;
+                this.startLongPoll();
+            }, delay);
+        }
 
-            try {
-                const url = this.buildLiveUrl(`live/messages?session_id=${encodeURIComponent(this.sessions.liveagent.sessionId)}`);
-                const response = await fetch(url, {
-                    headers: this.buildLiveHeaders(),
-                    credentials: 'same-origin',
-                    cache: 'no-store'
-                });
+        handleLongPollResponse(data) {
+            this.livePoll.retryIn = 500;
 
-                const data = await response.json();
+            if (!data || !Array.isArray(data.messages)) {
+                this.scheduleLongPoll();
+                return;
+            }
 
-                if (data.messages && Array.isArray(data.messages)) {
-                    let hasNewMessages = false;
+            let hasAgentReply = false;
 
-                    data.messages.forEach(msg => {
-                        // Check if message already exists
-                        const exists = this.sessions.liveagent.messages.some(m => m.id === msg.id);
-                        
-                        if (!exists) {
-                            this.sessions.liveagent.messages.push(msg);
-                            
-                            // Only render if in liveagent mode
-                            if (this.currentMode === 'liveagent') {
-                                this.renderMessage(msg);
-                                hasNewMessages = true;
-                            } else {
-                                // Increment unread count
-                                this.sessions.liveagent.unreadCount++;
-                                this.updateUnreadBadge();
-                            }
-                        }
-                    });
-
-                    if (hasNewMessages) {
-                        this.scrollToBottom();
-                        this.saveState();
-                        this.removeLiveAgentOnboarding();
-                    }
+            data.messages.forEach((message) => {
+                const seq = parseInt(message.seq || message.id || 0, 10);
+                if (!seq) {
+                    return;
                 }
 
-                // Update status
-                if (data.status) {
-                    const previousStatus = this.sessions.liveagent.status;
-                    this.sessions.liveagent.status = data.status;
-
-                    if (typeof this.handleStatusChange === 'function' && previousStatus !== data.status) {
-                        this.handleStatusChange(data.status, data);
-                    } else if (previousStatus !== data.status) {
-                        this.syncLiveAgentStatus();
-                    }
+                if (seq > this.livePoll.lastSeq) {
+                    this.livePoll.lastSeq = seq;
                 }
 
-                if (typeof data.agent_typing !== 'undefined') {
-                    this.sessions.liveagent.agentTyping = !!data.agent_typing;
+                const key = `seq-${seq}`;
+                if (this.livePoll.dedupe.has(key)) {
+                    return;
+                }
+                this.livePoll.dedupe.add(key);
+                if (this.livePoll.dedupe.size > 500) {
+                    const first = this.livePoll.dedupe.values().next().value;
+                    this.livePoll.dedupe.delete(first);
                 }
 
-                // Update agent info
-                if (data.agent) {
-                    this.sessions.liveagent.agentInfo = data.agent;
+                this.pushLiveAgentMessage(message);
+                if (message.role === 'admin' || message.sender === 'agent') {
+                    hasAgentReply = true;
                 }
+            });
 
-                if (this.sessions.liveagent.sessionId && this.currentMode === 'liveagent') {
-                    this.removeLiveAgentOnboarding();
+            if (data && data.status) {
+                const previousStatus = this.sessions.liveagent.status;
+                this.sessions.liveagent.status = data.status;
+
+                if (typeof this.handleStatusChange === 'function' && previousStatus !== data.status) {
+                    this.handleStatusChange(data.status, data);
+                } else if (previousStatus !== data.status) {
                     this.syncLiveAgentStatus();
                 }
-            } catch (error) {
-                console.error('Error polling Live Agent messages:', error);
             }
+
+            if (hasAgentReply && typeof this.showLiveBanner === 'function') {
+                this.showLiveBanner('connected');
+                this.setComposerEnabled(true);
+            }
+
+            if (this.sessions.liveagent.sessionId && this.currentMode === 'liveagent') {
+                this.removeLiveAgentOnboarding();
+                this.syncLiveAgentStatus();
+            }
+
+            if (data && data.agent) {
+                this.sessions.liveagent.agentInfo = data.agent;
+            }
+
+            this.scheduleLongPoll();
+        }
+
+        pushLiveAgentMessage(message) {
+            const normalized = {
+                id: message.id || message.seq || Date.now(),
+                seq: message.seq || message.id || Date.now(),
+                sender: message.sender || (message.role === 'admin' ? 'agent' : 'user'),
+                role: message.role || (message.sender === 'agent' ? 'admin' : 'user'),
+                message: message.content || message.message || '',
+                text: message.content || message.message || '',
+                timestamp: message.timestamp || message.created_at || new Date().toISOString(),
+                created_at: message.created_at || message.timestamp || new Date().toISOString(),
+                read: !!message.read,
+            };
+
+            if (normalized.sender === 'user') {
+                const pendingIndex = this.sessions.liveagent.messages.findIndex(
+                    (msg) => msg.pending && msg.sender === 'user'
+                );
+                if (pendingIndex !== -1) {
+                    this.sessions.liveagent.messages[pendingIndex] = Object.assign(
+                        {},
+                        this.sessions.liveagent.messages[pendingIndex],
+                        {
+                            id: normalized.id,
+                            seq: normalized.seq,
+                            pending: false,
+                            timestamp: normalized.timestamp,
+                            created_at: normalized.created_at,
+                        }
+                    );
+                    if (this.currentMode === 'liveagent') {
+                        this.renderMessages();
+                        this.scrollToBottom();
+                    }
+                    this.saveState();
+                    return;
+                }
+            }
+
+            const entry = {
+                id: normalized.id,
+                seq: normalized.seq,
+                sender: normalized.sender,
+                role: normalized.role,
+                text: normalized.text,
+                message: normalized.text,
+                timestamp: normalized.timestamp,
+                created_at: normalized.created_at,
+                pending: false,
+            };
+
+            this.sessions.liveagent.messages.push(entry);
+
+            if (this.currentMode === 'liveagent') {
+                this.renderMessage(entry);
+                this.scrollToBottom();
+            } else {
+                this.sessions.liveagent.unreadCount++;
+                this.updateUnreadBadge();
+            }
+
+            this.saveState();
         }
 
         updateUnreadBadge() {

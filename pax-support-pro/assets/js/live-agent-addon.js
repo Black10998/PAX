@@ -81,13 +81,10 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         this.currentMode = 'liveagent';
         this.sessions.liveagent.status = 'connecting';
         this.sessions.liveagent.startedAt = Date.now();
+        this.sessions.liveagent.messages = [];
 
         this.showLiveBanner('connecting');
-
-        if (this.inputField) {
-            this.inputField.disabled = true;
-            this.inputField.placeholder = paxLiveAgentText('connecting', 'Connecting to an agent…');
-        }
+        this.setComposerEnabled(false);
 
         this.disableAIFeatures();
         this.aiWasEnabled = typeof window.paxSupportPro !== 'undefined' ? window.paxSupportPro.aiEnabled : undefined;
@@ -95,79 +92,19 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             window.paxSupportPro.aiEnabled = false;
         }
 
-        const restBase = PAX_LIVE_ROUTES.base;
-        const createEndpoint = PAX_LIVE_ROUTES.session;
-        const currentUser = window.paxSupportPro?.currentUser || {};
-
-        this.sessions.liveagent.restBase = restBase;
-
-        fetch(createEndpoint, {
-            method: 'POST',
-            headers: PAX_LIVE_HEADERS(),
-            credentials: 'same-origin',
-            cache: 'no-store',
-            body: JSON.stringify({
-                user_meta: {
-                    id: currentUser?.id || 0,
-                    name: currentUser?.name || 'Guest',
-                    email: currentUser?.email || ''
-                },
-                page_url: window.location.href,
-                user_agent: navigator.userAgent
+        this.ensureLiveAgentSession(true)
+            .then(() => {
+                if (typeof this.renderQuickPromptsBar === 'function') {
+                    this.renderQuickPromptsBar();
+                }
+                if (this.sessions.liveagent.timeout) {
+                    clearTimeout(this.sessions.liveagent.timeout);
+                }
+                this.sessions.liveagent.timeout = setTimeout(() => {
+                    this.handleLiveTimeout();
+                }, 300000);
             })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success && data.session) {
-                this.sessions.liveagent.sessionId = data.session.id || data.session_id;
-                this.sessions.liveagent.status = data.session.status || data.status || 'pending';
-                this.sessions.liveagent.userName = data.session.user_name || this.sessions.liveagent.userName;
-                this.sessions.liveagent.userEmail = data.session.user_email || this.sessions.liveagent.userEmail;
-                this.saveState();
-
-                this.showLiveBanner('queue');
-                if (typeof this.renderQuickPromptsBar === 'function') {
-                    this.renderQuickPromptsBar();
-                }
-
-                if (typeof this.startPolling === 'function') {
-                    this.startPolling();
-                } else if (typeof this.startLivePolling === 'function') {
-                    this.startLivePolling();
-                }
-
-                this.sessions.liveagent.timeout = setTimeout(() => {
-                    this.handleLiveTimeout();
-                }, 300000);
-            } else if (data.session_id) {
-                this.sessions.liveagent.sessionId = data.session_id;
-                this.sessions.liveagent.status = data.status || 'pending';
-                this.saveState();
-
-                if (typeof this.renderQuickPromptsBar === 'function') {
-                    this.renderQuickPromptsBar();
-                }
-
-                if (typeof this.syncLiveAgentStatus === 'function') {
-                    this.syncLiveAgentStatus();
-                } else {
-                    this.showLiveBanner('queue');
-                }
-
-                if (typeof this.startPolling === 'function') {
-                    this.startPolling();
-                } else if (typeof this.startLivePolling === 'function') {
-                    this.startLivePolling();
-                }
-
-                this.sessions.liveagent.timeout = setTimeout(() => {
-                    this.handleLiveTimeout();
-                }, 300000);
-            } else {
-                throw new Error('Failed to create session');
-            }
-        })
-            .catch(error => {
+            .catch((error) => {
                 console.error('PAX-LIVE: Error starting session:', error);
                 this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
                 this.returnToAI();
@@ -175,36 +112,11 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     };
     
     PAXUnifiedChat.prototype.startLivePolling = function() {
-        if (this.isPolling) return;
-        
-        this.isPolling = true;
-        this.pollInterval = setInterval(() => {
-            this.pollLiveStatus();
-        }, 3000);
-        
-        // Initial poll
-        this.pollLiveStatus();
+        this.startLongPoll(true);
     };
     
     PAXUnifiedChat.prototype.pollLiveStatus = function() {
-        if (!this.sessions.liveagent.sessionId) return;
-        
-        const url = `${PAX_LIVE_ROUTES.status}?session_id=${encodeURIComponent(this.sessions.liveagent.sessionId)}`;
-        
-        fetch(url, {
-            headers: PAX_LIVE_HEADERS(false),
-            credentials: 'same-origin',
-            cache: 'no-store'
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status && data.status !== this.sessions.liveagent.status) {
-                this.handleStatusChange(data.status, data);
-            }
-        })
-        .catch(error => {
-            console.error('PAX-LIVE: Polling error:', error);
-        });
+        this.syncLiveAgentStatus();
     };
     
     PAXUnifiedChat.prototype.handleStatusChange = function(status, data) {
@@ -213,42 +125,40 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         this.sessions.liveagent.status = status;
         
         if (status === 'accepted' || status === 'active') {
-            this.sessions.liveagent.status = 'accepted';
+            this.sessions.liveagent.status = 'active';
             this.showLiveBanner('connected');
 
-            if (data.agent) {
+            if (data?.agent) {
                 this.sessions.liveagent.agentInfo = data.agent;
             }
 
-            if (this.inputField) {
-                this.inputField.disabled = false;
-                this.inputField.placeholder = paxLiveAgentText('typeHere', 'Type your message…');
+            this.setComposerEnabled(true);
+            if (typeof this.removeLiveAgentOnboarding === 'function') {
+                this.removeLiveAgentOnboarding();
             }
 
             this.saveState();
         } else if (status === 'pending') {
             this.sessions.liveagent.status = 'pending';
             this.showLiveBanner('queue');
+            this.setComposerEnabled(false);
         } else if (status === 'declined' || status === 'closed') {
+            this.sessions.liveagent.status = status;
+            this.setComposerEnabled(false);
             this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
-            this.returnToAI();
+            this.stopLongPoll();
         }
     };
     
     PAXUnifiedChat.prototype.handleLiveTimeout = function() {
         console.log('PAX-LIVE: Session timeout');
-        this.stopLivePolling();
+        this.stopLongPoll();
         this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
-        this.returnToAI();
+        this.setComposerEnabled(false);
     };
     
     PAXUnifiedChat.prototype.stopLivePolling = function() {
-        if (this.pollInterval) {
-            clearInterval(this.pollInterval);
-            this.pollInterval = null;
-        }
-        this.isPolling = false;
-        
+        this.stopLongPoll();
         if (this.sessions.liveagent.timeout) {
             clearTimeout(this.sessions.liveagent.timeout);
             this.sessions.liveagent.timeout = null;
@@ -279,41 +189,11 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     
     PAXUnifiedChat.prototype.endLiveSession = function() {
         console.log('PAX-LIVE: Ending session');
-        this.returnToAI();
+        this.closeLiveAgentSession().finally(() => this.returnToAI());
     };
     
     PAXUnifiedChat.prototype.sendLiveMessage = function(message) {
-        if (!this.sessions.liveagent.sessionId) {
-            throw new Error('No active live session');
-        }
-        
-        if (this.sessions.liveagent.status !== 'accepted') {
-            throw new Error('Session not accepted yet');
-        }
-        
-        const endpoint = `${PAX_LIVE_ROUTES.message}`;
-
-        if (!endpoint) {
-            throw new Error('Live agent endpoint not configured');
-        }
-
-        return fetch(endpoint, {
-            method: 'POST',
-            headers: PAX_LIVE_HEADERS(),
-            credentials: 'same-origin',
-            cache: 'no-store',
-            body: JSON.stringify({
-                session_id: this.sessions.liveagent.sessionId,
-                content: message
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                throw new Error(data.message || 'Failed to send message');
-            }
-            return data;
-        });
+        return this.sendLiveAgentMessage(message);
     };
     
     PAXUnifiedChat.prototype.showLiveBanner = function(state, customMessage) {

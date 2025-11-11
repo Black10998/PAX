@@ -62,6 +62,8 @@
             this.lastUserMessageId = {};
             this.focusTarget = null;
             this.sessionPoll = null;
+            this.messageStreamTimer = null;
+            this.messageStreamController = null;
 
             this.init();
         }
@@ -232,18 +234,38 @@
             }
             this.fetchSessions();
             if (!this.sessionPoll) {
-                this.sessionPoll = window.setInterval(() => this.fetchSessions(), 3000);
+                this.sessionPoll = window.setInterval(() => this.fetchSessions(), 2000);
             }
         }
 
         startMessagePolling() {
-            if (this.state.polling.messages) {
-                clearInterval(this.state.polling.messages);
-            }
+            this.stopMessagePolling();
             if (!this.state.selectedSessionId) {
                 return;
             }
-            this.state.polling.messages = window.setInterval(() => this.fetchMessages(true), 3000);
+            const loop = async () => {
+                if (!this.state.selectedSessionId) {
+                    return;
+                }
+                await this.fetchMessages(true, 25);
+                this.messageStreamTimer = window.setTimeout(loop, 60);
+            };
+            loop();
+        }
+
+        stopMessagePolling() {
+            if (this.messageStreamTimer) {
+                clearTimeout(this.messageStreamTimer);
+                this.messageStreamTimer = null;
+            }
+            if (this.messageStreamController) {
+                try {
+                    this.messageStreamController.abort();
+                } catch (error) {
+                    // ignore abort errors
+                }
+                this.messageStreamController = null;
+            }
         }
 
         async fetchSessions(initial = false) {
@@ -497,10 +519,7 @@
                 return;
             }
 
-            if (this.state.polling.messages) {
-                clearInterval(this.state.polling.messages);
-                this.state.polling.messages = null;
-            }
+            this.stopMessagePolling();
 
             this.state.selectedSessionId = sessionId;
             this.state.selectedSessionStatus = status;
@@ -688,6 +707,26 @@
             }
         }
 
+        handleStatusChange(status, payload = {}) {
+            if (!this.state.selectedSessionId) {
+                return;
+            }
+
+            const summary = this.findSessionSummary(this.state.selectedSessionId);
+            if (summary) {
+                summary.status = status;
+                if (payload?.agent) {
+                    summary.agent = payload.agent;
+                    summary.agent_id = payload.agent.id;
+                }
+                this.renderSessionHeader(summary);
+            }
+
+            if (status === 'closed' || status === 'declined') {
+                this.toast(this.getLiveString('sessionClosed', 'Session closed'));
+            }
+        }
+
         renderTags(session) {
             if (!this.elements.tags) {
                 return;
@@ -736,7 +775,7 @@
             return button;
         }
 
-        async fetchMessages(incremental = false) {
+        async fetchMessages(incremental = false, wait = 0) {
             const sessionId = this.state.selectedSessionId;
             if (!sessionId) {
                 return;
@@ -750,11 +789,21 @@
                 params.set('after', this.state.lastMessageId);
             }
 
+            if (wait) {
+                params.set('wait', Math.min(25, Math.max(1, wait)));
+            }
+
             const previousUserMessageId = this.lastUserMessageId[sessionId] || null;
 
             try {
+                const controller = (incremental && wait) ? new AbortController() : null;
+                if (controller) {
+                    this.messageStreamController = controller;
+                }
+
                 const response = await this.request(`${REST_ROUTES.messages}?${params.toString()}`, {
-                    method: 'GET'
+                    method: 'GET',
+                    signal: controller ? controller.signal : undefined
                 });
 
                 if (!response.success) {
@@ -791,6 +840,16 @@
 
                 if (response.last_id) {
                     this.state.lastMessageId = response.last_id;
+                } else if (response.messages && response.messages.length) {
+                    const last = response.messages[response.messages.length - 1];
+                    if (last?.id) {
+                        this.state.lastMessageId = last.id;
+                    }
+                }
+
+                if (response.status && response.status !== this.state.selectedSessionStatus) {
+                    this.state.selectedSessionStatus = response.status;
+                    this.handleStatusChange(response.status, response);
                 }
 
                 if (response.typing) {
@@ -801,7 +860,14 @@
                     this.scrollToBottom(true);
                 }
             } catch (error) {
+                if (error?.name === 'AbortError') {
+                    return;
+                }
                 console.error('LiveAgentCenter: failed to fetch messages', error);
+            } finally {
+                if (controller && this.messageStreamController === controller) {
+                    this.messageStreamController = null;
+                }
             }
         }
 
@@ -820,6 +886,13 @@
                 this.elements.messages.appendChild(fragment);
             } else {
                 this.elements.messages.appendChild(fragment);
+            }
+
+            if (messages.length) {
+                const last = messages[messages.length - 1];
+                if (last?.id) {
+                    this.state.lastMessageId = last.id;
+                }
             }
 
             this.scrollToBottom();
@@ -1009,9 +1082,7 @@
                     body: payload
                 });
 
-                if (response.success && response.message) {
-                    this.renderMessages([response.message], false);
-                    this.state.lastMessageId = response.message.id;
+                if (response.success) {
                     this.elements.input.value = '';
                     this.autoResizeInput();
                     this.emitTyping(false);
@@ -1164,6 +1235,10 @@
 
             if (options?.body) {
                 fetchOptions.body = options.isForm ? options.body : JSON.stringify(options.body);
+            }
+
+            if (options?.signal) {
+                fetchOptions.signal = options.signal;
             }
 
             const response = await fetch(url, fetchOptions);

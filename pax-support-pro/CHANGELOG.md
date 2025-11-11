@@ -5,6 +5,23 @@ All notable changes to PAX Support Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.8] - 2025-11-10
+
+### Added
+- Long-poll (≤25s) live message streaming for the widget and admin center with automatic retry and offline recovery.
+- Session rating endpoint and UI, including neon-glass quick actions and responsive chip styling.
+- Live banner enhancements with reconnect/offline messaging, animated dots, and safe-area support.
+
+### Changed
+- Frontend chat now pauses the assistant when Live Agent engages, disables the composer until connected, and exposes close/rate controls.
+- Admin Live Agent Center polls sessions every 2s, streams messages with long-polling, and updates status in real time with toast/audio cues.
+- Shared REST helpers now enforce `nocache_headers()`, normalized message sequencing, and expanded session summaries (rating, auth plugin, last activity).
+
+### Fixed
+- Normalized stored message payloads to guarantee incremental IDs for polling and prevent PHP 8 `end()` fatals.
+- Ensured rating/close/message routes honor REST nonces while remaining accessible to the Live Agent widget.
+- Addressed mobile layout jitters with new glassmorphic controls and 640px breakpoints across widget/admin surfaces.
+
 ## [5.4.8] - 2025-11-04
 
 ### 🔧 Critical Fix - Menu Buttons 100% Functional + Help Center Priority

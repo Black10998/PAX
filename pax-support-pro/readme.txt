@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 6.2
 Tested up to: 6.4
 Requires PHP: 8.0
-Stable tag: 5.9.7
+Stable tag: 5.9.8
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,13 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.9.8 - 2025-11-10 =
+* Long-poll message streaming (≤25s) for Live Agent widget/admin with auto-retry, offline detection, and reconnect banners.
+* New session rating REST endpoint, neon-glass quick controls, and safe-area aware styling for mobile users.
+* Frontend chat now pauses the AI assistant, disables the composer until accepted, and adds close/rate buttons with instant feedback.
+* Admin Center polls sessions every 2s, streams messages without gaps, and updates headers/toasts with real-time status changes.
+* REST payloads normalized (sequential IDs, last_activity updates, nocache headers) to eliminate PHP 8 fatals and caching regressions.
 
 = 5.9.7 - 2025-11-10 =
 * Fix manual upload package structure so the plugin installs cleanly from the WordPress admin.

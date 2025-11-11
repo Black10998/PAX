@@ -37,6 +37,8 @@ function pax_sup_create_liveagent_table() {
         auth_plugin varchar(60) DEFAULT 'core',
         source varchar(60) DEFAULT NULL,
         session_notes text DEFAULT NULL,
+        rating tinyint(3) UNSIGNED DEFAULT NULL,
+        rating_note text DEFAULT NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
         KEY agent_id (agent_id),
@@ -46,6 +48,9 @@ function pax_sup_create_liveagent_table() {
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta( $sql );
+
+    maybe_add_column( $table_name, 'rating', "ALTER TABLE $table_name ADD rating TINYINT(3) UNSIGNED DEFAULT NULL AFTER session_notes" );
+    maybe_add_column( $table_name, 'rating_note', "ALTER TABLE $table_name ADD rating_note text DEFAULT NULL AFTER rating" );
 
     // Verify table was created
     if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name'" ) !== $table_name ) {
@@ -99,6 +104,60 @@ function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     }
 
     return false;
+}
+
+/**
+ * Normalize live agent messages array ensuring sequence ordering.
+ *
+ * @param array $messages Message array.
+ * @return array
+ */
+function pax_sup_normalize_liveagent_messages( $messages ) {
+    if ( ! is_array( $messages ) ) {
+        return array();
+    }
+
+    $normalized = array();
+    $max_seq    = 0;
+
+    foreach ( $messages as $message ) {
+        $seq_candidate = isset( $message['seq'] ) ? (int) $message['seq'] : 0;
+
+        if ( $seq_candidate <= $max_seq ) {
+            $seq_candidate = $max_seq + 1;
+        }
+
+        if ( $seq_candidate <= 0 ) {
+            $seq_candidate = $max_seq + 1;
+        }
+
+        $max_seq = max( $max_seq, $seq_candidate );
+
+        $message['seq'] = $seq_candidate;
+        $message['id']  = $seq_candidate;
+
+        if ( empty( $message['timestamp'] ) ) {
+            $message['timestamp'] = current_time( 'mysql' );
+        }
+
+        if ( empty( $message['created_at'] ) ) {
+            $message['created_at'] = $message['timestamp'];
+        }
+
+        if ( empty( $message['role'] ) && isset( $message['sender'] ) ) {
+            $message['role'] = ( 'agent' === $message['sender'] ) ? 'admin' : 'user';
+        }
+
+        if ( ! isset( $message['sender'] ) && isset( $message['role'] ) ) {
+            $message['sender'] = ( 'admin' === $message['role'] ) ? 'agent' : 'user';
+        }
+
+        $message['read'] = ! empty( $message['read'] );
+
+        $normalized[] = $message;
+    }
+
+    return $normalized;
 }
 
 /**
@@ -191,9 +250,11 @@ function pax_sup_get_liveagent_session( $session_id ) {
         ARRAY_A
     );
 
-    if ( $session && ! empty( $session['messages'] ) ) {
-        $session['messages'] = json_decode( $session['messages'], true );
-        if ( ! is_array( $session['messages'] ) ) {
+    if ( $session ) {
+        if ( ! empty( $session['messages'] ) ) {
+            $decoded = json_decode( $session['messages'], true );
+            $session['messages'] = pax_sup_normalize_liveagent_messages( $decoded );
+        } else {
             $session['messages'] = array();
         }
     }
@@ -334,18 +395,25 @@ function pax_sup_add_liveagent_message( $session_id, $message_data ) {
         return false;
     }
 
-    $messages = $session['messages'];
-    if ( ! is_array( $messages ) ) {
-        $messages = array();
+    $messages = is_array( $session['messages'] ) ? $session['messages'] : array();
+    $max_seq  = 0;
+
+    foreach ( $messages as $existing ) {
+        $max_seq = max( $max_seq, (int) ( $existing['seq'] ?? 0 ) );
     }
 
-    // Add timestamp and ID to message
-    $message_data['id'] = uniqid( 'msg_', true );
-    $message_data['timestamp'] = current_time( 'mysql' );
-    $message_data['read'] = false;
+    $timestamp = current_time( 'mysql' );
+    $next_seq  = $max_seq + 1;
+
     if ( empty( $message_data['role'] ) ) {
         $message_data['role'] = ( isset( $message_data['sender'] ) && 'agent' === $message_data['sender'] ) ? 'admin' : 'user';
     }
+
+    $message_data['seq']        = $next_seq;
+    $message_data['id']         = $next_seq;
+    $message_data['timestamp']  = $timestamp;
+    $message_data['created_at'] = $timestamp;
+    $message_data['read']       = false;
 
     $messages[] = $message_data;
 
@@ -373,7 +441,7 @@ function pax_sup_mark_liveagent_messages_read( $session_id, $reader_type ) {
         return false;
     }
 
-    $messages = $session['messages'];
+    $messages = pax_sup_normalize_liveagent_messages( $session['messages'] );
     if ( ! is_array( $messages ) ) {
         return false;
     }
@@ -423,9 +491,11 @@ function pax_sup_get_user_active_session( $user_id ) {
         ARRAY_A
     );
 
-    if ( $session && ! empty( $session['messages'] ) ) {
-        $session['messages'] = json_decode( $session['messages'], true );
-        if ( ! is_array( $session['messages'] ) ) {
+    if ( $session ) {
+        if ( ! empty( $session['messages'] ) ) {
+            $decoded = json_decode( $session['messages'], true );
+            $session['messages'] = pax_sup_normalize_liveagent_messages( $decoded );
+        } else {
             $session['messages'] = array();
         }
     }
