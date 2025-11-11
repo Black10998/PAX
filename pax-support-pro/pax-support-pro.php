@@ -3,9 +3,9 @@
  * Plugin Name: PAX Support Pro
  * Plugin URI: https://github.com/Black10998/PAX
  * Description: Professional support ticket system with modern admin UI, real-time chat, AJAX-powered scheduler, and comprehensive callback management. Features include ChatGPT-style reactions, customizable welcome text, smooth animations, custom menus, and advanced analytics.
- * Version: 5.9.4
- * Requires at least: 5.0
- * Requires PHP: 7.4
+ * Version: 5.9.7
+ * Requires at least: 6.2
+ * Requires PHP: 8.0
  * Author: Ahmad AlKhalaf
  * Author URI: https://github.com/Black10998
  * License: GPL v2 or later
@@ -15,7 +15,7 @@
  * Domain Path: /languages
  * 
  * @package PAX_Support_Pro
- * @version 5.9.4
+ * @version 5.9.7
  * @since 1.0.0
  */
 
@@ -40,7 +40,7 @@ if ( ! defined( 'PAX_SUP_NS' ) ) {
 }
 
 if ( ! defined( 'PAX_SUP_VER' ) ) {
-    define( 'PAX_SUP_VER', '5.9.4' );
+    define( 'PAX_SUP_VER', '5.9.7' );
 }
 
 if ( ! defined( 'PAX_SUP_OPT_KEY' ) ) {
@@ -198,3 +198,22 @@ function pax_sup_force_asset_reload() {
     }
 }
 add_action( 'init', 'pax_sup_force_asset_reload' );
+
+// Auto-updates from GitHub Releases
+if ( ! isset( $GLOBALS['__pax_upd'] ) ) {
+    if ( ! class_exists( 'Puc_v4_Factory' ) ) {
+        require_once __DIR__ . '/includes/lib/plugin-update-checker/plugin-update-checker.php';
+    }
+    if ( class_exists( 'Puc_v4_Factory' ) ) {
+        $GLOBALS['__pax_upd'] = Puc_v4_Factory::buildUpdateChecker(
+            'https://github.com/Black10998/PAX',
+            __FILE__,
+            'pax-support-pro'
+        );
+        $vcs = $GLOBALS['__pax_upd']->getVcsApi();
+        if ( $vcs && method_exists( $vcs, 'enableReleaseAssets' ) ) {
+            $vcs->enableReleaseAssets();
+        }
+        $GLOBALS['__pax_upd']->setBranch( 'main' );
+    }
+}

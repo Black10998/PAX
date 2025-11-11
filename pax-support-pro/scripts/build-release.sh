@@ -64,7 +64,6 @@ INCLUDE_ITEMS=(
     "includes"
     "public"
     "rest"
-    "plugin-update-checker"
     "pax-support-pro.php"
     "README.txt"
     "CHANGELOG.md"

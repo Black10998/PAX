@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Load plugin-update-checker library
-require_once PAX_SUP_DIR . 'plugin-update-checker/plugin-update-checker.php';
+require_once PAX_SUP_DIR . 'includes/lib/plugin-update-checker/plugin-update-checker.php';
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
 

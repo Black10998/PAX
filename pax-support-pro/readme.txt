@@ -1,10 +1,10 @@
 === PAX Support Pro ===
 Contributors: ahmadalkhalaf
 Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
-Requires at least: 5.0
+Requires at least: 6.2
 Tested up to: 6.4
-Requires PHP: 7.4
-Stable tag: 5.9.4
+Requires PHP: 8.0
+Stable tag: 5.9.7
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,11 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.9.7 - 2025-11-10 =
+* Fix manual upload package structure so the plugin installs cleanly from the WordPress admin.
+* Enable GitHub Release auto-updates via Plugin Update Checker (release assets, main branch).
+* Carry forward all recent Live Agent improvements from the 5.9 series.
 
 = 5.9.4 - 2025-11-10 =
 * Hardened Live Agent REST endpoints with unified nonce/capability checks, log diagnostics, and fresh activity tracking.
