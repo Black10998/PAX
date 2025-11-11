@@ -18,6 +18,12 @@ function pax_register_live_agent_routes() {
         'permission_callback' => '__return_true',
     ) );
 
+    register_rest_route( 'pax/v1', '/live/session', array(
+        'methods'             => 'POST',
+        'callback'            => 'pax_live_agent_create_session',
+        'permission_callback' => '__return_true',
+    ) );
+
     register_rest_route( 'pax/v1', '/live/status', array(
         'methods'             => 'GET',
         'callback'            => 'pax_live_agent_status',
@@ -113,6 +119,10 @@ function pax_live_agent_start( $request ) {
         'status'     => 'pending',
         'rest_base'  => rest_url( 'pax/v1/' ),
     ) );
+}
+
+function pax_live_agent_create_session( $request ) {
+    return pax_live_agent_start( $request );
 }
 
 function pax_live_agent_status( $request ) {
@@ -355,9 +365,14 @@ function pax_live_agent_get_messages( $request ) {
         $messages = array_slice( $messages, $start_index );
     }
 
-    $last_message = end( $session['messages'] ?? array() );
-    if ( ! empty( $session['messages'] ) ) {
-        reset( $session['messages'] );
+    $session_messages = array();
+    if ( isset( $session['messages'] ) && is_array( $session['messages'] ) ) {
+        $session_messages = $session['messages'];
+    }
+
+    $last_message = end( $session_messages );
+    if ( ! empty( $session_messages ) ) {
+        reset( $session_messages );
     }
 
     return rest_ensure_response( array(

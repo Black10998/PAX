@@ -3,44 +3,54 @@
  * Instant connect UI with real routing
  */
 
+const paxLiveAgentText = (key, fallback) => {
+    if (window.paxSupportPro && window.paxSupportPro.strings && window.paxSupportPro.strings.liveagent) {
+        return window.paxSupportPro.strings.liveagent[key] || fallback;
+    }
+    return fallback;
+};
+
 // Extend PAXUnifiedChat with Live Agent methods
 if (typeof PAXUnifiedChat !== 'undefined') {
     
     PAXUnifiedChat.prototype.startLiveAgent = function() {
         console.log('PAX-LIVE: Starting Live Agent session');
-        
-        // Cancel any ongoing AI requests
+
+        if (typeof this.removeLiveAgentOnboarding === 'function') {
+            this.removeLiveAgentOnboarding();
+        }
+
         if (this.sessions.assistant.aiController) {
             this.sessions.assistant.aiController.abort();
             this.sessions.assistant.aiController = null;
         }
-        
-        // Hide typing indicator
+
         this.hideTypingIndicator();
-        
-        // Switch mode
-        this.currentMode = 'live';
-        this.sessions.liveagent.status = 'pending';
+
+        this.currentMode = 'liveagent';
+        this.sessions.liveagent.status = 'connecting';
         this.sessions.liveagent.startedAt = Date.now();
-        
-        // Show connecting banner with SVG spinner
+
         this.showLiveBanner('connecting');
-        
-        // Disable AI features
+
+        if (this.inputField) {
+            this.inputField.disabled = true;
+            this.inputField.placeholder = paxLiveAgentText('statusConnecting', 'Connecting to an agent…');
+        }
+
         this.disableAIFeatures();
         this.aiWasEnabled = typeof window.paxSupportPro !== 'undefined' ? window.paxSupportPro.aiEnabled : undefined;
         if (typeof window.paxSupportPro !== 'undefined') {
             window.paxSupportPro.aiEnabled = false;
         }
-        
-        // Get REST base and user data
+
         const restBase = window.paxSupportPro?.rest?.base || window.location.origin + '/wp-json/pax/v1/';
+        const createEndpoint = window.paxSupportPro?.rest?.liveagent?.create || (restBase + 'live/session');
         const currentUser = window.paxSupportPro?.currentUser || {};
-        
+
         this.sessions.liveagent.restBase = restBase;
-        
-        // Create session
-        fetch(restBase + 'live/start', {
+
+        fetch(createEndpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -48,9 +58,9 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             },
             body: JSON.stringify({
                 user_meta: {
-                    id: currentUser.id || 0,
-                    name: currentUser.name || 'Guest',
-                    email: currentUser.email || ''
+                    id: currentUser?.id || 0,
+                    name: currentUser?.name || 'Guest',
+                    email: currentUser?.email || ''
                 },
                 page_url: window.location.href,
                 user_agent: navigator.userAgent
@@ -62,11 +72,19 @@ if (typeof PAXUnifiedChat !== 'undefined') {
                 this.sessions.liveagent.sessionId = data.session_id;
                 this.sessions.liveagent.status = data.status || 'pending';
                 this.saveState();
-                
-                // Start polling
-                this.startLivePolling();
-                
-                // Set timeout (5 minutes)
+
+                if (typeof this.syncLiveAgentStatus === 'function') {
+                    this.syncLiveAgentStatus();
+                } else {
+                    this.showLiveBanner('queue');
+                }
+
+                if (typeof this.startPolling === 'function') {
+                    this.startPolling();
+                } else if (typeof this.startLivePolling === 'function') {
+                    this.startLivePolling();
+                }
+
                 this.sessions.liveagent.timeout = setTimeout(() => {
                     this.handleLiveTimeout();
                 }, 300000);
@@ -76,7 +94,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         })
         .catch(error => {
             console.error('PAX-LIVE: Error starting session:', error);
-            this.showError('Failed to connect to live agent. Please try again.');
+            this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
             this.returnToAI();
         });
     };
@@ -121,23 +139,23 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         
         if (status === 'accepted' || status === 'active') {
             this.sessions.liveagent.status = 'accepted';
-            this.stopLivePolling();
             this.showLiveBanner('connected');
-            
+
             if (data.agent) {
                 this.sessions.liveagent.agentInfo = data.agent;
             }
-            
-            // Enable input
+
             if (this.inputField) {
                 this.inputField.disabled = false;
-                this.inputField.placeholder = 'Type your message to the agent…';
+                this.inputField.placeholder = paxLiveAgentText('typeMessage', 'Type your message...');
             }
-            
+
             this.saveState();
+        } else if (status === 'pending') {
+            this.sessions.liveagent.status = 'pending';
+            this.showLiveBanner('queue');
         } else if (status === 'declined' || status === 'closed') {
-            this.stopLivePolling();
-            this.showError('No agent available right now.');
+            this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
             this.returnToAI();
         }
     };
@@ -145,7 +163,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     PAXUnifiedChat.prototype.handleLiveTimeout = function() {
         console.log('PAX-LIVE: Session timeout');
         this.stopLivePolling();
-        this.showError('Connection timeout. No agent available.');
+        this.showLiveBanner('error', paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.'));
         this.returnToAI();
     };
     
@@ -179,7 +197,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         
         if (this.inputField) {
             this.inputField.disabled = false;
-            this.inputField.placeholder = 'Type your message…';
+            const assistantPlaceholder = window.paxSupportPro?.strings?.assistantPlaceholder || 'Ask me anything...';
+            this.inputField.placeholder = assistantPlaceholder;
         }
     };
     
@@ -189,7 +208,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     };
     
     PAXUnifiedChat.prototype.sendLiveMessage = function(message) {
-        if (!this.sessions.liveagent.sessionId || !this.sessions.liveagent.restBase) {
+        if (!this.sessions.liveagent.sessionId) {
             throw new Error('No active live session');
         }
         
@@ -197,7 +216,14 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             throw new Error('Session not accepted yet');
         }
         
-        return fetch(this.sessions.liveagent.restBase + 'live/message', {
+        const endpoint = window.paxSupportPro?.rest?.liveagent?.send
+            || (this.sessions.liveagent.restBase ? this.sessions.liveagent.restBase + 'live/message' : '');
+
+        if (!endpoint) {
+            throw new Error('Live agent endpoint not configured');
+        }
+
+        return fetch(endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -217,7 +243,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         });
     };
     
-    PAXUnifiedChat.prototype.showLiveBanner = function(state) {
+    PAXUnifiedChat.prototype.showLiveBanner = function(state, customMessage) {
         let banner = document.getElementById('pax-live-banner');
         
         if (!banner) {
@@ -238,11 +264,21 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         </svg>`;
         
         if (state === 'connecting') {
-            banner.innerHTML = `${spinner} <span>Connecting to a live agent…</span>`;
+            const message = customMessage || paxLiveAgentText('statusConnecting', 'Connecting to an agent…');
+            banner.innerHTML = `${spinner} <span>${message}</span>`;
             banner.className = 'pax-live-banner pax-live-connecting';
+        } else if (state === 'queue') {
+            const message = customMessage || paxLiveAgentText('statusQueue', 'You are now in queue, please wait…');
+            banner.innerHTML = `${spinner} <span>${message}</span>`;
+            banner.className = 'pax-live-banner pax-live-queue';
         } else if (state === 'connected') {
-            banner.innerHTML = `<span class="pax-live-badge">●</span> <span>Connected to Live Agent</span>`;
+            const message = customMessage || paxLiveAgentText('statusConnected', 'Agent connected!');
+            banner.innerHTML = `<span class="pax-live-badge">●</span> <span>${message}</span>`;
             banner.className = 'pax-live-banner pax-live-connected';
+        } else if (state === 'error') {
+            const message = customMessage || paxLiveAgentText('statusError', 'Unable to connect to a live agent right now.');
+            banner.innerHTML = `<span class="pax-live-error">${message}</span>`;
+            banner.className = 'pax-live-banner pax-live-error';
         }
         
         banner.style.display = 'flex';
@@ -274,7 +310,7 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     // Override handleSend to route to live agent when active
     const originalHandleSend = PAXUnifiedChat.prototype.handleSend;
     PAXUnifiedChat.prototype.handleSend = function() {
-        if (this.currentMode === 'live' && this.sessions.liveagent.status === 'accepted') {
+        if (this.currentMode === 'liveagent' && this.sessions.liveagent.status === 'accepted') {
             // Send to live agent
             if (!this.inputField || !this.inputField.value.trim()) {
                 return;

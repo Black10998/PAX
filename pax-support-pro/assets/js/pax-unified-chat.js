@@ -2375,21 +2375,28 @@
 
             // Update input placeholder
             if (this.inputField) {
-                this.inputField.placeholder = mode === 'liveagent' 
-                    ? 'Type your message to agent...'
-                    : 'Ask me anything...';
+                const assistantPlaceholder = window.paxSupportPro?.strings?.assistantPlaceholder || 'Ask me anything...';
+                const liveagentPlaceholder = this.getLiveAgentString('typeMessage', 'Type your message...');
+                this.inputField.placeholder = mode === 'liveagent'
+                    ? liveagentPlaceholder
+                    : assistantPlaceholder;
             }
 
             // Start polling for liveagent
-            if (mode === 'liveagent') {
-                await this.ensureLiveAgentSession();
-                this.startPolling();
-            }
-
             // Clear unread badge for switched mode
             if (mode === 'liveagent') {
                 this.sessions.liveagent.unreadCount = 0;
                 this.updateUnreadBadge();
+
+                if (this.sessions.liveagent.sessionId) {
+                    this.removeLiveAgentOnboarding();
+                    this.startPolling();
+                    this.syncLiveAgentStatus();
+                } else {
+                    this.renderLiveAgentOnboarding();
+                }
+            } else {
+                this.removeLiveAgentOnboarding();
             }
 
             // Save state
@@ -2417,6 +2424,108 @@
             // Update chat window class
             this.chatWindow.classList.toggle('mode-liveagent', this.currentMode === 'liveagent');
             this.chatWindow.classList.toggle('mode-assistant', this.currentMode === 'assistant');
+        }
+
+        renderLiveAgentOnboarding() {
+            if (!this.messageContainer) {
+                return;
+            }
+
+            if (this.messageContainer.querySelector('.pax-liveagent-onboarding')) {
+                return;
+            }
+
+            const strings = window.paxSupportPro?.strings?.liveagent || {};
+            const panel = document.createElement('div');
+            panel.className = 'pax-liveagent-onboarding';
+            panel.innerHTML = `
+                <div class="pax-liveagent-onboarding__inner">
+                    <div class="pax-liveagent-onboarding__content">
+                        <h3>${this.getLiveAgentString('onboardingTitle', 'Need live support?')}</h3>
+                        <p>${this.getLiveAgentString('onboardingSubtitle', 'Choose how you would like to get help:')}</p>
+                    </div>
+                    <div class="pax-liveagent-onboarding__actions">
+                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--primary" data-action="start">
+                            ${this.getLiveAgentString('onboardingStart', 'Start Live Chat')}
+                        </button>
+                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--secondary" data-action="assistant">
+                            ${this.getLiveAgentString('onboardingAssistant', 'Ask Assistant first')}
+                        </button>
+                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--ghost" data-action="message">
+                            ${this.getLiveAgentString('onboardingLeaveMessage', 'Leave a message')}
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            this.messageContainer.appendChild(panel);
+            this.sessions.liveagent.onboardingVisible = true;
+
+            const startBtn = panel.querySelector('[data-action="start"]');
+            const assistantBtn = panel.querySelector('[data-action="assistant"]');
+            const messageBtn = panel.querySelector('[data-action="message"]');
+
+            if (startBtn) {
+                startBtn.addEventListener('click', () => {
+                    if (startBtn.disabled) {
+                        return;
+                    }
+                    startBtn.disabled = true;
+                    startBtn.classList.add('is-loading');
+                    this.removeLiveAgentOnboarding();
+                    if (typeof this.startLiveAgent === 'function') {
+                        this.startLiveAgent();
+                    } else {
+                        this.ensureLiveAgentSession(true).then(() => {
+                            this.startPolling();
+                            this.syncLiveAgentStatus();
+                        });
+                    }
+                });
+            }
+
+            if (assistantBtn) {
+                assistantBtn.addEventListener('click', () => {
+                    this.switchMode('assistant', true);
+                });
+            }
+
+            if (messageBtn) {
+                messageBtn.addEventListener('click', () => {
+                    this.openNewTicket();
+                    this.switchMode('assistant', true);
+                });
+            }
+        }
+
+        removeLiveAgentOnboarding() {
+            if (!this.messageContainer) {
+                return;
+            }
+            const panel = this.messageContainer.querySelector('.pax-liveagent-onboarding');
+            if (panel && panel.parentNode) {
+                panel.parentNode.removeChild(panel);
+            }
+            this.sessions.liveagent.onboardingVisible = false;
+        }
+
+        syncLiveAgentStatus() {
+            if (typeof this.showLiveBanner !== 'function') {
+                return;
+            }
+
+            const status = this.sessions.liveagent.status;
+            if (status === 'accepted' || status === 'active') {
+                this.showLiveBanner('connected');
+            } else if (status === 'pending') {
+                this.showLiveBanner('queue');
+            } else if (status === 'connecting') {
+                this.showLiveBanner('connecting');
+            }
+        }
+
+        getLiveAgentString(key, fallback = '') {
+            return window.paxSupportPro?.strings?.liveagent?.[key] || fallback;
         }
 
         async handleSend() {
@@ -2557,19 +2666,37 @@
             this.saveState();
         }
 
-        async ensureLiveAgentSession() {
-            if (this.sessions.liveagent.sessionId) {
+        async ensureLiveAgentSession(force = false) {
+            if (this.sessions.liveagent.sessionId && !force) {
                 return;
             }
 
             try {
-                const response = await fetch(window.paxSupportPro.rest.liveagent.create, {
+                const endpoint = window.paxSupportPro?.rest?.liveagent?.create
+                    || (window.paxSupportPro?.rest?.base ? window.paxSupportPro.rest.base + 'live/session' : null);
+
+                if (!endpoint) {
+                    console.error('Live Agent endpoint not configured');
+                    return;
+                }
+
+                const currentUser = window.paxSupportPro?.currentUser || {};
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-WP-Nonce': window.paxSupportPro.nonce
                     },
-                    body: JSON.stringify({})
+                    body: JSON.stringify({
+                        user_meta: {
+                            id: currentUser?.id || 0,
+                            name: currentUser?.name || 'Guest',
+                            email: currentUser?.email || ''
+                        },
+                        page_url: window.location.href,
+                        user_agent: navigator.userAgent
+                    })
                 });
 
                 const data = await response.json();
@@ -2640,17 +2767,34 @@
                     if (hasNewMessages) {
                         this.scrollToBottom();
                         this.saveState();
+                        this.removeLiveAgentOnboarding();
                     }
                 }
 
                 // Update status
                 if (data.status) {
+                    const previousStatus = this.sessions.liveagent.status;
                     this.sessions.liveagent.status = data.status;
+
+                    if (typeof this.handleStatusChange === 'function' && previousStatus !== data.status) {
+                        this.handleStatusChange(data.status, data);
+                    } else if (previousStatus !== data.status) {
+                        this.syncLiveAgentStatus();
+                    }
+                }
+
+                if (typeof data.agent_typing !== 'undefined') {
+                    this.sessions.liveagent.agentTyping = !!data.agent_typing;
                 }
 
                 // Update agent info
                 if (data.agent) {
                     this.sessions.liveagent.agentInfo = data.agent;
+                }
+
+                if (this.sessions.liveagent.sessionId && this.currentMode === 'liveagent') {
+                    this.removeLiveAgentOnboarding();
+                    this.syncLiveAgentStatus();
                 }
             } catch (error) {
                 console.error('Error polling Live Agent messages:', error);
@@ -2682,6 +2826,15 @@
             // Render all messages for current mode
             const messages = this.sessions[this.currentMode].messages;
             messages.forEach(msg => this.renderMessage(msg));
+
+            if (this.currentMode === 'liveagent') {
+                if (!this.sessions.liveagent.sessionId || messages.length === 0) {
+                    this.renderLiveAgentOnboarding();
+                } else {
+                    this.removeLiveAgentOnboarding();
+                    this.syncLiveAgentStatus();
+                }
+            }
 
             this.scrollToBottom();
         }
