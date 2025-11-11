@@ -61,6 +61,7 @@ require_once PAX_SUP_DIR . 'includes/notifications.php';
 require_once PAX_SUP_DIR . 'includes/liveagent-db.php';
 require_once PAX_SUP_DIR . 'includes/liveagent-settings.php';
 require_once PAX_SUP_DIR . 'includes/liveagent-capabilities.php';
+require_once PAX_SUP_DIR . 'includes/rest-api.php';
 require_once PAX_SUP_DIR . 'includes/rest/chat-endpoints.php';
 require_once PAX_SUP_DIR . 'admin/settings.php';
 require_once PAX_SUP_DIR . 'admin/console.php';

@@ -39,6 +39,8 @@
     window.paxErrorLog = paxErrorLog;
     window.paxInspectState = paxInspectState;
 
+    const PAX_API_ROOT = (window.wpApiSettings?.root || `${window.location.origin}/wp-json/`).replace(/\/?$/, '/');
+
     /**
      * PAX Settings Manager
      * Full synchronization system for admin settings to frontend UI
