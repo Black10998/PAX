@@ -244,6 +244,13 @@ if (typeof PAXUnifiedChat !== 'undefined') {
     };
     
     PAXUnifiedChat.prototype.showLiveBanner = function(state, customMessage) {
+        if (this.currentMode && this.currentMode !== 'liveagent') {
+            if (typeof this.hideLiveBanner === 'function') {
+                this.hideLiveBanner();
+            }
+            return;
+        }
+
         let banner = document.getElementById('pax-live-banner');
         
         if (!banner) {

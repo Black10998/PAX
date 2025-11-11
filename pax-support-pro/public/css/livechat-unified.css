@@ -2358,15 +2358,15 @@
 #pax-chat.mode-liveagent {
   background: rgba(12, 18, 36, 0.85);
   border: 1px solid rgba(98, 149, 255, 0.25);
-  backdrop-filter: blur(26px) saturate(135%);
+  backdrop-filter: blur(14px) saturate(135%);
   box-shadow: 0 32px 80px rgba(12, 18, 36, 0.55);
-  color: #f1f6ff;
+  color: #E8ECF6;
 }
 
 #pax-chat.mode-liveagent .pax-header {
   background: linear-gradient(135deg, rgba(98, 149, 255, 0.28), rgba(125, 81, 255, 0.22));
   border-bottom: 1px solid rgba(122, 167, 255, 0.28);
-  color: #f4f8ff;
+  color: #E8ECF6;
   box-shadow: 0 20px 40px rgba(10, 18, 32, 0.45);
 }
 
@@ -2473,8 +2473,8 @@
   padding: 24px;
   margin: 24px 20px;
   box-shadow: 0 28px 50px rgba(10, 18, 32, 0.45);
-  backdrop-filter: blur(22px);
-  color: #eef3ff;
+  backdrop-filter: blur(14px);
+  color: #E8ECF6;
 }
 
 .pax-liveagent-onboarding__inner {
@@ -2527,7 +2527,7 @@
 
 .pax-liveagent-btn--secondary {
   background: rgba(12, 20, 35, 0.68);
-  color: rgba(208, 224, 255, 0.82);
+  color: rgba(232, 236, 246, 0.8);
   border: 1px solid rgba(122, 167, 255, 0.32);
 }
 
@@ -2538,7 +2538,7 @@
 
 .pax-liveagent-btn--ghost {
   background: transparent;
-  color: rgba(200, 216, 255, 0.7);
+  color: rgba(232, 236, 246, 0.7);
   border: 1px dashed rgba(122, 167, 255, 0.28);
 }
 

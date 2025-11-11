@@ -2397,6 +2397,9 @@
                 }
             } else {
                 this.removeLiveAgentOnboarding();
+                if (typeof this.hideLiveBanner === 'function') {
+                    this.hideLiveBanner();
+                }
             }
 
             // Save state
@@ -2510,6 +2513,11 @@
         }
 
         syncLiveAgentStatus() {
+            if (typeof this.hideLiveBanner === 'function' && this.currentMode !== 'liveagent') {
+                this.hideLiveBanner();
+                return;
+            }
+
             if (typeof this.showLiveBanner !== 'function') {
                 return;
             }
@@ -2834,6 +2842,8 @@
                     this.removeLiveAgentOnboarding();
                     this.syncLiveAgentStatus();
                 }
+            } else if (typeof this.hideLiveBanner === 'function') {
+                this.hideLiveBanner();
             }
 
             this.scrollToBottom();

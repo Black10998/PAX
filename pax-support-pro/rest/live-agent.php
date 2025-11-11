@@ -86,16 +86,19 @@ function pax_register_live_agent_routes() {
 function pax_live_agent_start( $request ) {
     global $wpdb;
     
-    $user_meta = $request->get_param( 'user_meta' ) ?: array();
-    $user_id = get_current_user_id();
-    
+    $user_meta     = $request->get_param( 'user_meta' ) ?: array();
+    $current_user  = wp_get_current_user();
+    $has_wp_user   = ( $current_user instanceof WP_User ) && $current_user->exists();
+    $resolved_name = $has_wp_user ? $current_user->display_name : sanitize_text_field( $user_meta['name'] ?? 'Guest' );
+    $resolved_email = $has_wp_user ? $current_user->user_email : sanitize_email( $user_meta['email'] ?? '' );
+
     $page_url = $request->get_param( 'page_url' );
     $session_data = array(
-        'user_id'       => $user_id ?: 0,
+        'user_id'       => $has_wp_user ? (int) $current_user->ID : (int) get_current_user_id(),
         'status'        => 'pending',
         'started_at'    => current_time( 'mysql' ),
-        'user_name'     => sanitize_text_field( $user_meta['name'] ?? 'Guest' ),
-        'user_email'    => sanitize_email( $user_meta['email'] ?? '' ),
+        'user_name'     => $resolved_name ? sanitize_text_field( $resolved_name ) : 'Guest',
+        'user_email'    => $resolved_email,
         'user_ip'       => pax_sup_get_client_ip(),
         'page_url'      => $page_url ? esc_url_raw( $page_url ) : '',
         'messages'      => wp_json_encode( array() ),

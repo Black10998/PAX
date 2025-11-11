@@ -202,7 +202,8 @@
             if (this.state.polling.sessions) {
                 clearInterval(this.state.polling.sessions);
             }
-            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 4000);
+            this.fetchSessions();
+            this.state.polling.sessions = window.setInterval(() => this.fetchSessions(), 2500);
         }
 
         startMessagePolling() {
