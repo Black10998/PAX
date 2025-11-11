@@ -126,6 +126,16 @@ function pax_live_agent_start( $request ) {
         $session['user_name'] = $resolved_name ?: __( 'Guest', 'pax-support-pro' );
     }
 
+    error_log(
+        sprintf(
+            '[PAX LIVE] create_session sid=%d user=%d domain=%s auth=%s',
+            $session_id,
+            intval( $session_payload['user_id'] ),
+            $session_payload['domain'],
+            $session_payload['auth_plugin']
+        )
+    );
+
     pax_notify_admin_live_agent_request( $session_id, array(
         'user_name'  => $session['user_name'] ?? $session_payload['user_name'],
         'user_email' => $session['user_email'] ?? $session_payload['user_email'],
@@ -138,9 +148,8 @@ function pax_live_agent_start( $request ) {
 
     return rest_ensure_response( array(
         'success'    => true,
-        'session_id' => $session_id,
-        'status'     => 'pending',
         'session'    => $summary,
+        'session_id' => $session_id,
     ) );
 }
 
@@ -223,9 +232,12 @@ function pax_live_agent_accept( $request ) {
         return new WP_Error( 'db_error', 'Failed to accept session', array( 'status' => 500 ) );
     }
     
+    $session = pax_sup_get_liveagent_session( $session_id );
+
     return rest_ensure_response( array(
-        'success' => true,
-        'status'  => 'accepted',
+        'success'    => true,
+        'session'    => $session ? pax_live_agent_prepare_session_summary( $session ) : null,
+        'session_id' => $session_id,
     ) );
 }
 
@@ -259,9 +271,12 @@ function pax_live_agent_decline( $request ) {
         return new WP_Error( 'db_error', 'Failed to decline session', array( 'status' => 500 ) );
     }
     
+    $session = pax_sup_get_liveagent_session( $session_id );
+
     return rest_ensure_response( array(
-        'success' => true,
-        'status'  => 'declined',
+        'success'    => true,
+        'session'    => $session ? pax_live_agent_prepare_session_summary( $session ) : null,
+        'session_id' => $session_id,
     ) );
 }
 
@@ -358,13 +373,24 @@ function pax_live_agent_message( $request ) {
         $new_message   = end( $temp_messages );
     }
 
+    error_log(
+        sprintf(
+            '[PAX LIVE] msg sid=%d role=%s len=%d',
+            $session_id,
+            $message_data['role'],
+            strlen( (string) $message_text )
+        )
+    );
+
     if ( $new_message ) {
         pax_sup_notify_new_message( $session_id, $new_message, $sender );
     }
 
     return rest_ensure_response( array(
-        'success' => true,
-        'message' => $new_message,
+        'success'    => true,
+        'session'    => pax_live_agent_prepare_session_summary( $updated_session ),
+        'session_id' => $session_id,
+        'message'    => $new_message,
     ) );
 }
 
@@ -416,6 +442,7 @@ function pax_live_agent_get_messages( $request ) {
         'session'   => pax_live_agent_prepare_session_summary( $session ),
         'typing'    => pax_live_agent_get_typing_state( $session_id ),
         'timestamp' => current_time( 'mysql' ),
+        'session_id' => $session_id,
     ) );
 }
 
@@ -478,6 +505,14 @@ function pax_live_agent_list_sessions( $request ) {
         $recent_raw
     );
 
+    error_log(
+        sprintf(
+            '[PAX LIVE] list_sessions uid=%d count=%d',
+            get_current_user_id(),
+            count( $pending ) + count( $active )
+        )
+    );
+
     return rest_ensure_response( array(
         'success' => true,
         'pending' => array_values( $pending ),
@@ -513,6 +548,7 @@ function pax_live_agent_get_session( $request ) {
     return rest_ensure_response( array(
         'success' => true,
         'session' => pax_live_agent_prepare_session_summary( $session ),
+        'session_id' => $session_id,
     ) );
 }
 
@@ -555,9 +591,12 @@ function pax_live_agent_close( $request ) {
         'message' => __( 'Chat session ended by agent.', 'pax-support-pro' ),
     ) );
 
+    $updated_session = pax_sup_get_liveagent_session( $session_id );
+
     return rest_ensure_response( array(
-        'success' => true,
-        'status'  => 'closed',
+        'success'    => true,
+        'session'    => $updated_session ? pax_live_agent_prepare_session_summary( $updated_session ) : null,
+        'session_id' => $session_id,
     ) );
 }
 
@@ -632,7 +671,14 @@ function pax_live_agent_get_typing_state( $session_id ) {
 }
 
 function pax_live_agent_verify_nonce( $request ) {
-    $nonce = $request->get_header( 'x-wp-nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return false;
+    }
+
+    $nonce = $request->get_header( 'X-WP-Nonce' );
+    if ( ! $nonce ) {
+        $nonce = $request->get_header( 'x-wp-nonce' );
+    }
 
     if ( ! $nonce && isset( $_REQUEST['_wpnonce'] ) ) {
         $nonce = sanitize_text_field( wp_unslash( $_REQUEST['_wpnonce'] ) );

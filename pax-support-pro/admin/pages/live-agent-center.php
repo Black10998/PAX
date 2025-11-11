@@ -47,7 +47,7 @@ function pax_sup_render_live_agent_center_page() {
     $sound_flag  = ! empty( $liveagent_settings['sound_enabled'] ) ? '1' : '0';
     ?>
     <div class="wrap pax-liveagent-app" data-sound-enabled="<?php echo esc_attr( $sound_flag ); ?>">
-        <header class="pax-liveagent-header">
+        <header class="pax-liveagent-header pax-card">
             <div class="pax-header-title">
                 <span class="dashicons dashicons-format-chat"></span>
                 <div>
@@ -79,7 +79,7 @@ function pax_sup_render_live_agent_center_page() {
         </header>
 
         <section class="pax-liveagent-shell">
-            <aside class="pax-liveagent-sidebar" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
+            <aside class="pax-liveagent-sidebar pax-card" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
                 <nav class="pax-session-tabs" role="tablist">
                     <button type="button" class="pax-tab-button active" data-tab="pending" aria-selected="true">
                         <span class="pax-tab-icon" aria-hidden="true">🕓</span>
@@ -128,14 +128,13 @@ function pax_sup_render_live_agent_center_page() {
                     <p><?php esc_html_e( 'Select a conversation on the left to review its messages.', 'pax-support-pro' ); ?></p>
                 </div>
 
-                <div class="pax-chat-panel" id="pax-liveagent-panel" hidden>
+                <div class="pax-chat-panel pax-card" id="pax-liveagent-panel" hidden>
                     <div class="pax-chat-panel-header">
                         <div class="pax-chat-session-meta">
                             <div class="pax-session-avatar" id="pax-liveagent-avatar" aria-hidden="true"></div>
                             <div>
                                 <h2 id="pax-liveagent-customer-name"></h2>
                                 <p id="pax-liveagent-session-meta"></p>
-                                <a href="#" id="pax-liveagent-page-url" class="pax-session-link" target="_blank" rel="noopener noreferrer"></a>
                             </div>
                         </div>
                         <div class="pax-chat-header-actions" id="pax-liveagent-actions">
@@ -143,37 +142,79 @@ function pax_sup_render_live_agent_center_page() {
                         </div>
                     </div>
 
-                    <div class="pax-chat-session-tags" id="pax-liveagent-session-tags"></div>
+                    <div class="pax-chat-panel-body">
+                        <div class="pax-chat-conversation">
+                            <div class="pax-chat-session-tags" id="pax-liveagent-session-tags"></div>
 
-                    <div class="pax-chat-scroll" id="pax-liveagent-messages" data-scroll>
-                        <!-- Messages rendered here -->
-                    </div>
+                            <div class="pax-chat-scroll" id="pax-liveagent-messages" data-scroll>
+                                <!-- Messages rendered here -->
+                            </div>
 
-                    <div class="pax-chat-typing" id="pax-liveagent-typing" hidden>
-                        <span class="pax-typing-dot"></span>
-                        <span class="pax-typing-dot"></span>
-                        <span class="pax-typing-dot"></span>
-                        <span class="pax-typing-label"><?php esc_html_e( 'Visitor is typing…', 'pax-support-pro' ); ?></span>
-                    </div>
+                            <div class="pax-chat-typing" id="pax-liveagent-typing" hidden>
+                                <span class="pax-typing-dot"></span>
+                                <span class="pax-typing-dot"></span>
+                                <span class="pax-typing-dot"></span>
+                                <span class="pax-typing-label"><?php esc_html_e( 'Visitor is typing…', 'pax-support-pro' ); ?></span>
+                            </div>
 
-                    <div class="pax-chat-composer" id="pax-liveagent-composer">
-                        <button type="button" class="pax-icon-button" id="pax-liveagent-attach" title="<?php esc_attr_e( 'Attach file', 'pax-support-pro' ); ?>">
-                            <span class="dashicons dashicons-paperclip"></span>
-                        </button>
-                        <label class="screen-reader-text" for="pax-liveagent-file"><?php esc_html_e( 'Upload file', 'pax-support-pro' ); ?></label>
-                        <input type="file" id="pax-liveagent-file" hidden>
+                            <div class="pax-chat-composer" id="pax-liveagent-composer">
+                                <button type="button" class="pax-icon-button" id="pax-liveagent-attach" title="<?php esc_attr_e( 'Attach file', 'pax-support-pro' ); ?>">
+                                    <span class="dashicons dashicons-paperclip"></span>
+                                </button>
+                                <label class="screen-reader-text" for="pax-liveagent-file"><?php esc_html_e( 'Upload file', 'pax-support-pro' ); ?></label>
+                                <input type="file" id="pax-liveagent-file" hidden>
 
-                        <textarea
-                            id="pax-liveagent-input"
-                            rows="1"
-                            placeholder="<?php esc_attr_e( 'Type a reply…', 'pax-support-pro' ); ?>"
-                            autocomplete="off"
-                        ></textarea>
+                                <textarea
+                                    id="pax-liveagent-input"
+                                    rows="1"
+                                    placeholder="<?php esc_attr_e( 'Type a reply…', 'pax-support-pro' ); ?>"
+                                    autocomplete="off"
+                                ></textarea>
 
-                        <button type="button" class="button button-primary pax-send-button" id="pax-liveagent-send">
-                            <span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
-                            <span class="pax-send-label"><?php esc_html_e( 'Send', 'pax-support-pro' ); ?></span>
-                        </button>
+                                <button type="button" class="button button-primary pax-send-button" id="pax-liveagent-send">
+                                    <span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
+                                    <span class="pax-send-label"><?php esc_html_e( 'Send', 'pax-support-pro' ); ?></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <aside class="pax-chat-details">
+                            <div class="pax-card pax-details-card">
+                                <h3><?php esc_html_e( 'Visitor Info', 'pax-support-pro' ); ?></h3>
+                                <dl class="pax-detail-list">
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Email', 'pax-support-pro' ); ?></dt>
+                                        <dd id="pax-liveagent-detail-email">—</dd>
+                                    </div>
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Domain', 'pax-support-pro' ); ?></dt>
+                                        <dd id="pax-liveagent-detail-domain">—</dd>
+                                    </div>
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Auth Plugin', 'pax-support-pro' ); ?></dt>
+                                        <dd id="pax-liveagent-detail-auth">—</dd>
+                                    </div>
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Page', 'pax-support-pro' ); ?></dt>
+                                        <dd><a href="#" id="pax-liveagent-page-url" class="pax-session-link" target="_blank" rel="noopener noreferrer"></a></dd>
+                                    </div>
+                                </dl>
+                            </div>
+
+                            <div class="pax-card pax-details-card">
+                                <h3><?php esc_html_e( 'Timeline', 'pax-support-pro' ); ?></h3>
+                                <dl class="pax-detail-list">
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Started', 'pax-support-pro' ); ?></dt>
+                                        <dd id="pax-liveagent-detail-started">—</dd>
+                                    </div>
+                                    <div class="pax-detail-row">
+                                        <dt><?php esc_html_e( 'Last activity', 'pax-support-pro' ); ?></dt>
+                                        <dd id="pax-liveagent-detail-last">—</dd>
+                                    </div>
+                                </dl>
+                            </div>
+                        </aside>
                     </div>
                 </div>
             </main>
@@ -190,7 +231,7 @@ function pax_sup_render_live_agent_center_page() {
         </footer>
 
         <audio id="pax-liveagent-chime" preload="auto">
-            <source src="<?php echo esc_url( PAX_SUP_URL . 'assets/notification.mp3' ); ?>" type="audio/mpeg">
+            <source src="<?php echo esc_url( PAX_SUP_URL . 'assets/audio/ding.mp3' ); ?>" type="audio/mpeg">
         </audio>
     </div>
     <?php

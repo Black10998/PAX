@@ -2402,11 +2402,13 @@
                     this.removeLiveAgentOnboarding();
                     this.startPolling();
                     this.syncLiveAgentStatus();
+                    this.renderQuickPromptsBar();
                 } else {
                     this.renderLiveAgentOnboarding();
                 }
             } else {
                 this.removeLiveAgentOnboarding();
+                this.removeQuickPromptsBar();
                 if (typeof this.hideLiveBanner === 'function') {
                     this.hideLiveBanner();
                 }
@@ -2548,7 +2550,66 @@
             if (nonce) {
                 headers['X-WP-Nonce'] = nonce;
             }
+            if (window.PAX_LIVE?.noStore) {
+                headers['Cache-Control'] = 'no-store';
+            }
             return headers;
+        }
+
+        renderQuickPromptsBar() {
+            if (!this.chatWindow) {
+                return;
+            }
+
+            const composer = this.chatWindow.querySelector('.pax-input-area');
+            if (!composer) {
+                return;
+            }
+
+            const prompts = (window.PAX_LIVE && Array.isArray(window.PAX_LIVE.quickPrompts))
+                ? window.PAX_LIVE.quickPrompts.filter(Boolean)
+                : [];
+
+            let bar = composer.querySelector('.pax-quick-prompts');
+
+            if (!prompts.length) {
+                if (bar && bar.parentNode) {
+                    bar.parentNode.removeChild(bar);
+                }
+                return;
+            }
+
+            if (!bar) {
+                bar = document.createElement('div');
+                bar.className = 'pax-quick-prompts';
+                composer.prepend(bar);
+            } else {
+                bar.innerHTML = '';
+            }
+
+            prompts.forEach((text) => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'pax-chip';
+                chip.textContent = text;
+                chip.addEventListener('click', () => {
+                    if (this.inputField) {
+                        this.inputField.value = text;
+                        this.inputField.focus();
+                    }
+                });
+                bar.appendChild(chip);
+            });
+        }
+
+        removeQuickPromptsBar() {
+            if (!this.chatWindow) {
+                return;
+            }
+            const bar = this.chatWindow.querySelector('.pax-quick-prompts');
+            if (bar && bar.parentNode) {
+                bar.parentNode.removeChild(bar);
+            }
         }
 
         syncLiveAgentStatus() {
@@ -2759,6 +2820,7 @@
                     if (typeof this.syncLiveAgentStatus === 'function') {
                         this.syncLiveAgentStatus();
                     }
+                    this.renderQuickPromptsBar();
                 } else if (data.session_id) {
                     this.sessions.liveagent.sessionId = data.session_id;
                     this.sessions.liveagent.status = data.status || 'pending';
@@ -2768,6 +2830,7 @@
                     if (typeof this.syncLiveAgentStatus === 'function') {
                         this.syncLiveAgentStatus();
                     }
+                    this.renderQuickPromptsBar();
                 }
             } catch (error) {
                 console.error('Error creating Live Agent session:', error);

@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 5.9.0
+Stable tag: 5.9.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -100,6 +100,9 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.9.1 - 2025-11-10 =
+* Admin sync fix, live notifications, Quick Prompts, modern neon-glass UI, and improved diagnostics.
 
 = 5.9.0 - 2025-11-10 =
 * Live session bootstrap, user detection, spinner/tab fix, and reliable REST messaging.

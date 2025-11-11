@@ -275,6 +275,32 @@ function pax_sup_enqueue_admin_assets( $hook ) {
                 ),
             )
         );
+
+        wp_localize_script(
+            'pax-liveagent-center',
+            'PAX_LIVE',
+            array(
+                'restBase' => esc_url_raw( $rest_base ),
+                'nonce'    => wp_create_nonce( 'wp_rest' ),
+                'noStore'  => true,
+                'strings'  => array(
+                    'connecting'  => __( 'Connecting to an agent…', 'pax-support-pro' ),
+                    'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
+                    'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
+                    'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
+                    'newRequest'  => __( 'New live request', 'pax-support-pro' ),
+                    'newMessage'  => __( 'New message', 'pax-support-pro' ),
+                ),
+                'quickPrompts' => array(
+                    __( 'I need help with my order', 'pax-support-pro' ),
+                    __( 'How long does delivery take?', 'pax-support-pro' ),
+                    __( 'Speak to a human agent', 'pax-support-pro' ),
+                ),
+                'assets' => array(
+                    'ding' => esc_url_raw( PAX_SUP_URL . 'assets/audio/ding.mp3' ),
+                ),
+            )
+        );
     }
 
     // Analytics page specific assets

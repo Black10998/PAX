@@ -44,6 +44,9 @@
             };
 
             this.elements = {};
+            this.pendingNotified = new Set();
+            this.lastUserMessageId = {};
+            this.focusTarget = null;
 
             this.init();
         }
@@ -56,10 +59,14 @@
             this.startSessionPolling();
 
             const params = new URLSearchParams(window.location.search);
+            const focusParam = params.get('focus');
+            if (focusParam) {
+                this.focusTarget = parseInt(focusParam, 10);
+            }
             const initialSession = params.get('session');
-            if (initialSession) {
+            if (initialSession && !this.focusTarget) {
                 this.loadSession(parseInt(initialSession, 10), 'pending');
-            } else if (this.config.initialSession) {
+            } else if (this.config.initialSession && !this.focusTarget) {
                 this.loadSession(this.config.initialSession, 'active');
             }
         }
@@ -95,6 +102,11 @@
             this.elements.pingStatus = document.getElementById('pax-liveagent-ping-status');
             this.elements.restLabel = document.getElementById('pax-liveagent-rest');
             this.elements.chime = document.getElementById('pax-liveagent-chime');
+            this.elements.detailEmail = document.getElementById('pax-liveagent-detail-email');
+            this.elements.detailDomain = document.getElementById('pax-liveagent-detail-domain');
+            this.elements.detailAuth = document.getElementById('pax-liveagent-detail-auth');
+            this.elements.detailStarted = document.getElementById('pax-liveagent-detail-started');
+            this.elements.detailLast = document.getElementById('pax-liveagent-detail-last');
         }
 
         bindEvents() {
@@ -217,6 +229,7 @@
         }
 
         async fetchSessions(initial = false) {
+            const previousPendingIds = new Set((this.state.sessions.pending || []).map((session) => session.id));
             try {
                 const params = new URLSearchParams({
                     limit: '30',
@@ -235,10 +248,21 @@
                 this.state.sessions.active = response.active || [];
                 this.state.sessions.recent = response.recent || [];
 
+                const newPending = this.state.sessions.pending.find((session) => !previousPendingIds.has(session.id));
+                if (newPending && !this.pendingNotified.has(newPending.id)) {
+                    this.pendingNotified.add(newPending.id);
+                    this.notifyNewRequest(newPending);
+                }
+
                 this.updateSessionLists();
 
                 if (initial && this.state.sessions.pending.length) {
                     this.loadSession(this.state.sessions.pending[0].id, 'pending');
+                }
+
+                if (this.focusTarget) {
+                    this.openSession(this.focusTarget);
+                    this.focusTarget = null;
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: failed to fetch sessions', error);
@@ -397,6 +421,30 @@
             return card;
         }
 
+        extractPath(url) {
+            if (!url) {
+                return '';
+            }
+            try {
+                const parsed = new URL(url, window.location.origin);
+                if (parsed.pathname && parsed.pathname !== '/') {
+                    return parsed.pathname;
+                }
+                return parsed.hostname || parsed.href;
+            } catch (error) {
+                return url;
+            }
+        }
+
+        formatAuthProvider(provider) {
+            if (!provider || provider === 'core') {
+                return 'Core';
+            }
+            return provider
+                .replace(/[_-]/g, ' ')
+                .replace(/\b\w/g, (char) => char.toUpperCase());
+        }
+
         formatRelativeTime(timestamp) {
             if (!timestamp) {
                 return '';
@@ -489,6 +537,24 @@
             return allSessions.find((session) => session.id === sessionId);
         }
 
+        openSession(sessionId) {
+            if (!sessionId) {
+                return;
+            }
+            const summary = this.findSessionSummary(sessionId);
+            if (summary) {
+                const status = summary.status === 'active'
+                    ? 'active'
+                    : (summary.status === 'pending' ? 'pending' : 'recent');
+                const targetTab = status === 'recent' ? 'recent' : status;
+                this.switchTab(targetTab);
+                this.loadSession(sessionId, status === 'recent' ? 'recent' : status);
+            } else {
+                this.switchTab('pending');
+                this.loadSession(sessionId, 'pending');
+            }
+        }
+
         renderSessionHeader(session) {
             if (this.elements.customerName) {
                 this.elements.customerName.textContent = session.user_name || this.config.strings?.unknownUser || 'Guest';
@@ -502,22 +568,21 @@
                 if (session.domain) {
                     parts.push(session.domain);
                 }
-                if (session.auth_plugin && session.auth_plugin !== 'core') {
-                    parts.push(`Auth: ${session.auth_plugin}`);
-                }
-                if (session.user_ip) {
-                    parts.push(session.user_ip);
+                if (session.page_url) {
+                    parts.push(this.extractPath(session.page_url));
                 }
                 this.elements.sessionMeta.textContent = parts.join(' • ');
             }
 
             if (this.elements.pageUrl) {
                 if (session.page_url) {
-                    this.elements.pageUrl.textContent = session.page_url;
+                    this.elements.pageUrl.textContent = this.extractPath(session.page_url);
                     this.elements.pageUrl.href = session.page_url;
                     this.elements.pageUrl.hidden = false;
                 } else {
-                    this.elements.pageUrl.hidden = true;
+                    this.elements.pageUrl.textContent = '—';
+                    this.elements.pageUrl.removeAttribute('href');
+                    this.elements.pageUrl.hidden = false;
                 }
             }
 
@@ -564,6 +629,22 @@
                     : (this.config.strings?.closedMessage || 'This session is closed.');
                 placeholder.appendChild(text);
                 this.elements.messages.appendChild(placeholder);
+            }
+
+            if (this.elements.detailEmail) {
+                this.elements.detailEmail.textContent = session.user_email || '—';
+            }
+            if (this.elements.detailDomain) {
+                this.elements.detailDomain.textContent = session.domain || '—';
+            }
+            if (this.elements.detailAuth) {
+                this.elements.detailAuth.textContent = this.formatAuthProvider(session.auth_plugin);
+            }
+            if (this.elements.detailStarted) {
+                this.elements.detailStarted.textContent = session.started_at ? this.formatAbsoluteTime(session.started_at) : '—';
+            }
+            if (this.elements.detailLast) {
+                this.elements.detailLast.textContent = session.last_activity ? this.formatRelativeTime(session.last_activity) : '—';
             }
         }
 
@@ -638,17 +719,20 @@
         }
 
         async fetchMessages(incremental = false) {
-            if (!this.state.selectedSessionId) {
+            const sessionId = this.state.selectedSessionId;
+            if (!sessionId) {
                 return;
             }
 
             const params = new URLSearchParams({
-                session_id: String(this.state.selectedSessionId)
+                session_id: String(sessionId)
             });
 
             if (incremental && this.state.lastMessageId) {
                 params.set('after', this.state.lastMessageId);
             }
+
+            const previousUserMessageId = this.lastUserMessageId[sessionId] || null;
 
             try {
                 const response = await this.request(`${REST_ROUTES.messages}?${params.toString()}`, {
@@ -664,15 +748,25 @@
                 }
 
                 const messages = response.messages || [];
+                let latestUserMessageId = previousUserMessageId;
+                if (messages.length) {
+                    const userMessage = [...messages].reverse().find((msg) => msg.sender === 'user');
+                    if (userMessage?.id) {
+                        latestUserMessageId = userMessage.id;
+                    }
+                }
 
                 if (!incremental) {
                     this.renderMessages(messages, true);
+                    const lastMessage = response.session?.last_message;
+                    if (lastMessage?.sender === 'user' && lastMessage?.id) {
+                        this.lastUserMessageId[sessionId] = lastMessage.id;
+                    }
                 } else if (messages.length) {
                     this.renderMessages(messages, false);
-
-                    const containsUserMessage = messages.some((msg) => msg.sender === 'user');
-                    if (containsUserMessage && response.session?.status === 'active') {
-                        this.notify();
+                    if (latestUserMessageId && latestUserMessageId !== previousUserMessageId && response.session?.status === 'active') {
+                        this.lastUserMessageId[sessionId] = latestUserMessageId;
+                        this.notifyNewMessage();
                         this.markMessagesRead();
                     }
                 }
@@ -960,8 +1054,20 @@
 
             this.elements.pingStatus.textContent = testing;
             try {
+                const headers = new Headers();
+                const liveNonce = window.PAX_LIVE?.nonce || this.config.nonce;
+                if (liveNonce) {
+                    headers.set('X-WP-Nonce', liveNonce);
+                }
+                if (window.PAX_LIVE?.noStore) {
+                    headers.set('Cache-Control', 'no-store');
+                }
+
                 const response = await fetch(`${REST_ROUTES.status}?healthcheck=1`, {
-                    headers: { 'X-WP-Nonce': this.config.nonce || '' }
+                    method: 'GET',
+                    headers,
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
                 const data = await response.json();
                 if (data?.status === 'ok') {
@@ -1023,15 +1129,10 @@
         }
 
         notify() {
-            if (!this.state.audioEnabled || !this.elements.chime) {
+            if (!this.state.audioEnabled) {
                 return;
             }
-            try {
-                this.elements.chime.currentTime = 0;
-                this.elements.chime.play().catch(() => {});
-            } catch (error) {
-                // ignore playback errors
-            }
+            this.playDing();
         }
 
         async request(url, options) {
@@ -1039,8 +1140,12 @@
             if (!options?.isForm && options?.method && options.method.toUpperCase() !== 'GET') {
                 headers.set('Content-Type', 'application/json');
             }
-            if (this.config.nonce) {
-                headers.set('X-WP-Nonce', this.config.nonce);
+            const liveNonce = window.PAX_LIVE?.nonce || this.config.nonce;
+            if (liveNonce) {
+                headers.set('X-WP-Nonce', liveNonce);
+            }
+            if (window.PAX_LIVE?.noStore) {
+                headers.set('Cache-Control', 'no-store');
             }
 
             const fetchOptions = {
@@ -1059,6 +1164,65 @@
                 throw new Error(`HTTP ${response.status}`);
             }
             return response.json();
+        }
+
+        getLiveString(key, fallback) {
+            return (window.PAX_LIVE && window.PAX_LIVE.strings && window.PAX_LIVE.strings[key]) || fallback;
+        }
+
+        notifyNewRequest(session) {
+            const label = this.getLiveString('newRequest', 'New live request');
+            const name = session?.user_name || this.config.strings?.unknownUser || 'Guest';
+            this.toast(`${label}: ${name}`);
+            this.playDing();
+        }
+
+        notifyNewMessage() {
+            const label = this.getLiveString('newMessage', 'New message');
+            const sessionId = this.state.selectedSessionId;
+            const summary = sessionId ? this.findSessionSummary(sessionId) : null;
+            const name = summary?.user_name || this.config.strings?.unknownUser || 'Guest';
+            this.toast(`${label}: ${name}`);
+            this.playDing();
+        }
+
+        playDing() {
+            if (!this.state.audioEnabled) {
+                return;
+            }
+
+            const src = window.PAX_LIVE?.assets?.ding;
+            if (src) {
+                try {
+                    const audio = new Audio(src);
+                    audio.play().catch(() => {});
+                    return;
+                } catch (error) {
+                    // Fallback to embedded chime element
+                }
+            }
+            if (this.elements.chime) {
+                try {
+                    this.elements.chime.currentTime = 0;
+                    this.elements.chime.play().catch(() => {});
+                } catch (error) {
+                    // ignore
+                }
+            }
+        }
+
+        toast(message) {
+            if (!message) {
+                return;
+            }
+            const toast = document.createElement('div');
+            toast.className = 'pax-toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            window.setTimeout(() => {
+                toast.classList.add('pax-toast-hide');
+                window.setTimeout(() => toast.remove(), 300);
+            }, 4000);
         }
     }
 

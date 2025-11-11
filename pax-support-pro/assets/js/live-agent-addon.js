@@ -20,6 +20,7 @@ const PAX_LIVE_ROUTES = {
 };
 
 const PAX_LIVE_NONCE = PAX_LIVE_CONFIG.nonce || window.paxSupportPro?.nonce || '';
+const PAX_LIVE_NO_STORE = !!PAX_LIVE_CONFIG.noStore;
 const PAX_LIVE_STRINGS = Object.assign(
     {
         connecting: 'Connecting to an agent…',
@@ -85,7 +86,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': PAX_LIVE_NONCE
+                'X-WP-Nonce': PAX_LIVE_NONCE,
+                ...(PAX_LIVE_NO_STORE ? { 'Cache-Control': 'no-store' } : {})
             },
             credentials: 'same-origin',
             cache: 'no-store',
@@ -169,7 +171,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
         
         fetch(url, {
             headers: {
-                'X-WP-Nonce': PAX_LIVE_NONCE
+                'X-WP-Nonce': PAX_LIVE_NONCE,
+                ...(PAX_LIVE_NO_STORE ? { 'Cache-Control': 'no-store' } : {})
             },
             credentials: 'same-origin',
             cache: 'no-store'
@@ -279,7 +282,8 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-WP-Nonce': PAX_LIVE_NONCE
+                'X-WP-Nonce': PAX_LIVE_NONCE,
+                ...(PAX_LIVE_NO_STORE ? { 'Cache-Control': 'no-store' } : {})
             },
             credentials: 'same-origin',
             cache: 'no-store',
