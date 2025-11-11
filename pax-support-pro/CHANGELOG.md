@@ -5,6 +5,20 @@ All notable changes to PAX Support Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.5] - 2025-11-10
+
+### 🚀 Highlights
+- **Hard Live Agent mode** now pauses the assistant, enforces new session creation, displays animated “Connecting…” → “Queued…” banners, queues messages with 1 s polling (slowing to 2 s after 3 minutes), and prompts visitors with an end-chat rating modal plus restart CTA.
+- **Widget resiliency** adds offline heartbeat/persistent connectivity, ETag/If-None-Match incremental fetches, after=last_id cursors, heartbeat reconnects, restart button, and visualViewport-safe mobile composer to prevent keyboard tilt.
+
+### 🛠 Admin Command Center
+- Added refresh button with loading state, 1 s → 3 s adaptive session polling, 30 s heartbeat, and non-blocking Accept/Decline/Close with spinner feedback.
+- Added inline “?” tooltips (keyboard accessible), visitor IP/User Agent diagnostics, queue counts, and responsive neon-glass polish with RTL support.
+
+### 🔐 Backend / REST
+- `/live/messages` now supports incremental `after` cursors + strong ETag responses and returns 304 when unchanged.
+- Session lifecycle always creates fresh rows, records `accepted_at/closed_at`, enforces spam rate limiting, and exposes `/live/rate` endpoint with `nocache_headers()` everywhere.
+
 ## [5.4.8] - 2025-11-04
 
 ### 🔧 Critical Fix - Menu Buttons 100% Functional + Help Center Priority

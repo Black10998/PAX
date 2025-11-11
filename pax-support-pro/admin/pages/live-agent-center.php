@@ -55,6 +55,14 @@ function pax_sup_render_live_agent_center_page() {
                     <p><?php esc_html_e( 'Track live requests, collaborate with visitors, and hand off seamlessly to human support.', 'pax-support-pro' ); ?></p>
                 </div>
             </div>
+            <div class="pax-header-actions">
+                <button type="button" class="button pax-refresh-btn" id="pax-liveagent-refresh" aria-label="<?php esc_attr_e( 'Refresh live sessions', 'pax-support-pro' ); ?>">
+                    <span class="dashicons dashicons-update" aria-hidden="true"></span>
+                    <span class="pax-refresh-label"><?php esc_html_e( 'Refresh', 'pax-support-pro' ); ?></span>
+                    <span class="pax-spinner" aria-hidden="true"></span>
+                </button>
+                <button type="button" class="pax-help-icon" id="pax-liveagent-refresh-help" aria-label="<?php esc_attr_e( 'How refresh works', 'pax-support-pro' ); ?>">?</button>
+            </div>
             <div class="pax-header-diagnostics">
                 <div class="pax-diagnostics-grid">
                     <div>
@@ -74,6 +82,7 @@ function pax_sup_render_live_agent_center_page() {
                     <span class="dashicons dashicons-admin-network"></span>
                     <?php esc_html_e( 'Ping REST', 'pax-support-pro' ); ?>
                 </button>
+                <button type="button" class="pax-help-icon" id="pax-liveagent-ping-help" aria-label="<?php esc_attr_e( 'Learn about diagnostics', 'pax-support-pro' ); ?>">?</button>
                 <span class="pax-diagnostic-status" id="pax-liveagent-ping-status" aria-live="polite"></span>
             </div>
         </header>
@@ -175,6 +184,7 @@ function pax_sup_render_live_agent_center_page() {
                                     <span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
                                     <span class="pax-send-label"><?php esc_html_e( 'Send', 'pax-support-pro' ); ?></span>
                                 </button>
+                                  <button type="button" class="pax-help-icon pax-composer-help" id="pax-liveagent-composer-help" aria-label="<?php esc_attr_e( 'Composer help', 'pax-support-pro' ); ?>">?</button>
                             </div>
                         </div>
 
@@ -186,6 +196,10 @@ function pax_sup_render_live_agent_center_page() {
                                         <dt><?php esc_html_e( 'Email', 'pax-support-pro' ); ?></dt>
                                         <dd id="pax-liveagent-detail-email">—</dd>
                                     </div>
+                                      <div class="pax-detail-row">
+                                          <dt><?php esc_html_e( 'IP Address', 'pax-support-pro' ); ?></dt>
+                                          <dd id="pax-liveagent-detail-ip">—</dd>
+                                      </div>
                                     <div class="pax-detail-row">
                                         <dt><?php esc_html_e( 'Domain', 'pax-support-pro' ); ?></dt>
                                         <dd id="pax-liveagent-detail-domain">—</dd>
@@ -194,6 +208,10 @@ function pax_sup_render_live_agent_center_page() {
                                         <dt><?php esc_html_e( 'Auth Plugin', 'pax-support-pro' ); ?></dt>
                                         <dd id="pax-liveagent-detail-auth">—</dd>
                                     </div>
+                                      <div class="pax-detail-row">
+                                          <dt><?php esc_html_e( 'User Agent', 'pax-support-pro' ); ?></dt>
+                                          <dd id="pax-liveagent-detail-ua">—</dd>
+                                      </div>
                                     <div class="pax-detail-row">
                                         <dt><?php esc_html_e( 'Page', 'pax-support-pro' ); ?></dt>
                                         <dd><a href="#" id="pax-liveagent-page-url" class="pax-session-link" target="_blank" rel="noopener noreferrer"></a></dd>

@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 5.0
 Tested up to: 6.4
 Requires PHP: 7.4
-Stable tag: 5.9.2
+Stable tag: 5.9.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,12 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 5.9.5 - 2025-11-10 =
+* Hard Live Agent mode pauses the assistant, enforces fresh sessions, adds restart CTA, and delivers queue/connected banners with offline resiliency (1s polling → 2s after 3 minutes, heartbeat reconnect, spam-safe session tokens, and rating modal hand-off).
+* Admin Command Center upgrades: 1s→3s adaptive session polling, 30s heartbeat, refresh button with loading state, non-blocking Accept/Decline/Close actions, inline “?” tooltips, and new visitor IP/User Agent diagnostics for anti-spam review.
+* REST messaging hardened with after=last_id cursors, ETag/If-None-Match 304 handling, nocache headers, and optimistic send retries for near-instant delivery.
+* Mobile widget polish: safe-area aware viewport locking, visualViewport keyboard tracking, textarea autosize, offline queue flushing, and accessible spinner/ARIA refinements.
 
 = 5.9.2 - 2025-11-10 =
 * Fix REST access, nocache, real-time admin polling, responsive refinements & diagnostics.

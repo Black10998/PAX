@@ -48,7 +48,20 @@
             this.pendingNotified = new Set();
             this.lastUserMessageId = {};
             this.focusTarget = null;
-            this.sessionPoll = null;
+            this.sessionPollTimer = null;
+            this.sessionPollStart = 0;
+            this.sessionPollDelay = 3000;
+            this.heartbeatTimer = null;
+            this.messagePollTimer = null;
+            this.messagePollStart = 0;
+            this.messagePollDelay = 1000;
+            this.connectionState = 'online';
+            this.tooltipElement = null;
+            this.tooltipHideTimer = null;
+            this.tooltipHandlers = new WeakMap();
+            this.lastMessageEtag = null;
+            this.currentTooltipTarget = null;
+            this.handleViewportChange = () => this.hideTooltip();
 
             this.init();
         }
@@ -57,8 +70,11 @@
             this.cacheElements();
             this.bindEvents();
             this.renderDiagnostics();
-            this.fetchSessions(true);
+            this.fetchSessions({ initial: true });
             this.startSessionPolling();
+            this.startHeartbeat();
+            window.addEventListener('scroll', this.handleViewportChange, { passive: true });
+            window.addEventListener('resize', this.handleViewportChange);
 
             const params = new URLSearchParams(window.location.search);
             const focusParam = params.get('focus');
@@ -100,15 +116,21 @@
             this.elements.fileInput = document.getElementById('pax-liveagent-file');
             this.elements.input = document.getElementById('pax-liveagent-input');
             this.elements.sendButton = document.getElementById('pax-liveagent-send');
+            this.elements.refreshButton = document.getElementById('pax-liveagent-refresh');
+            this.elements.refreshHelp = document.getElementById('pax-liveagent-refresh-help');
             this.elements.pingButton = document.getElementById('pax-liveagent-ping');
+            this.elements.pingHelp = document.getElementById('pax-liveagent-ping-help');
             this.elements.pingStatus = document.getElementById('pax-liveagent-ping-status');
             this.elements.restLabel = document.getElementById('pax-liveagent-rest');
             this.elements.chime = document.getElementById('pax-liveagent-chime');
             this.elements.detailEmail = document.getElementById('pax-liveagent-detail-email');
+            this.elements.detailIp = document.getElementById('pax-liveagent-detail-ip');
             this.elements.detailDomain = document.getElementById('pax-liveagent-detail-domain');
             this.elements.detailAuth = document.getElementById('pax-liveagent-detail-auth');
+            this.elements.detailUa = document.getElementById('pax-liveagent-detail-ua');
             this.elements.detailStarted = document.getElementById('pax-liveagent-detail-started');
             this.elements.detailLast = document.getElementById('pax-liveagent-detail-last');
+            this.elements.composerHelp = document.getElementById('pax-liveagent-composer-help');
         }
 
         bindEvents() {
@@ -128,15 +150,17 @@
                     const sessionId = parseInt(card.dataset.sessionId, 10);
                     const status = card.dataset.sessionStatus;
 
-                    if (event.target.matches('[data-action="accept"]')) {
+                    const acceptButton = event.target.closest('[data-action="accept"]');
+                    if (acceptButton) {
                         event.stopPropagation();
-                        this.acceptSession(sessionId, card);
+                        this.acceptSession(sessionId, card, acceptButton);
                         return;
                     }
 
-                    if (event.target.matches('[data-action="decline"]')) {
+                    const declineButton = event.target.closest('[data-action="decline"]');
+                    if (declineButton) {
                         event.stopPropagation();
-                        this.declineSession(sessionId);
+                        this.declineSession(sessionId, declineButton);
                         return;
                     }
 
@@ -148,6 +172,7 @@
                 this.elements.sendButton.addEventListener('click', () => {
                     this.sendMessage();
                 });
+                this.attachTooltip(this.elements.sendButton, this.config.strings?.tooltipComposer);
             }
 
             if (this.elements.input) {
@@ -180,6 +205,27 @@
 
             if (this.elements.pingButton) {
                 this.elements.pingButton.addEventListener('click', () => this.pingRest());
+                this.attachTooltip(this.elements.pingButton, this.config.strings?.tooltipPing);
+            }
+
+            if (this.elements.refreshButton) {
+                this.elements.refreshButton.addEventListener('click', () => this.handleManualRefresh());
+                this.attachTooltip(this.elements.refreshButton, this.config.strings?.tooltipRefresh);
+            }
+
+            if (this.elements.refreshHelp) {
+                this.attachTooltip(this.elements.refreshHelp, this.config.strings?.tooltipRefresh, { focus: true });
+                this.elements.refreshHelp.addEventListener('click', () => this.toggleTooltip(this.elements.refreshHelp));
+            }
+
+            if (this.elements.pingHelp) {
+                this.attachTooltip(this.elements.pingHelp, this.config.strings?.tooltipPing, { focus: true });
+                this.elements.pingHelp.addEventListener('click', () => this.toggleTooltip(this.elements.pingHelp));
+            }
+
+            if (this.elements.composerHelp) {
+                this.attachTooltip(this.elements.composerHelp, this.config.strings?.tooltipComposer, { focus: true });
+                this.elements.composerHelp.addEventListener('click', () => this.toggleTooltip(this.elements.composerHelp));
             }
         }
 
@@ -213,27 +259,101 @@
         }
 
         startSessionPolling() {
-            if (this.sessionPoll) {
-                clearInterval(this.sessionPoll);
-                this.sessionPoll = null;
+            this.stopSessionPolling();
+            this.sessionPollStart = Date.now();
+            this.sessionPollDelay = 1000;
+            this.scheduleSessionPoll(0);
+        }
+
+        scheduleSessionPoll(delay = this.sessionPollDelay) {
+            if (this.sessionPollTimer) {
+                clearTimeout(this.sessionPollTimer);
             }
-            this.fetchSessions();
-            if (!this.sessionPoll) {
-                this.sessionPoll = window.setInterval(() => this.fetchSessions(), 3000);
+            const nextDelay = Math.max(250, delay);
+            this.sessionPollTimer = window.setTimeout(async () => {
+                await this.fetchSessions({ auto: true });
+                const pendingCount = this.state.sessions.pending.length;
+                if (pendingCount > 0) {
+                    const elapsed = Date.now() - this.sessionPollStart;
+                    this.sessionPollDelay = elapsed >= 60000 ? 3000 : 1000;
+                } else {
+                    this.sessionPollStart = Date.now();
+                    this.sessionPollDelay = 3000;
+                }
+                this.scheduleSessionPoll(this.sessionPollDelay);
+            }, nextDelay);
+            this.state.polling.sessions = this.sessionPollTimer;
+        }
+
+        stopSessionPolling() {
+            if (this.sessionPollTimer) {
+                clearTimeout(this.sessionPollTimer);
+                this.sessionPollTimer = null;
+            }
+            this.state.polling.sessions = null;
+        }
+
+        startHeartbeat() {
+            this.stopHeartbeat();
+            this.heartbeatTimer = window.setInterval(() => {
+                this.fetchSessions({ heartbeat: true, silent: true });
+            }, 30000);
+        }
+
+        stopHeartbeat() {
+            if (this.heartbeatTimer) {
+                clearInterval(this.heartbeatTimer);
+                this.heartbeatTimer = null;
             }
         }
 
         startMessagePolling() {
-            if (this.state.polling.messages) {
-                clearInterval(this.state.polling.messages);
-            }
+            this.stopMessagePolling();
             if (!this.state.selectedSessionId) {
                 return;
             }
-            this.state.polling.messages = window.setInterval(() => this.fetchMessages(true), 3000);
+            this.messagePollStart = Date.now();
+            this.messagePollDelay = 1000;
+            this.scheduleMessagePoll(0);
         }
 
-        async fetchSessions(initial = false) {
+        scheduleMessagePoll(delay = this.messagePollDelay) {
+            if (this.messagePollTimer) {
+                clearTimeout(this.messagePollTimer);
+            }
+            const nextDelay = Math.max(250, delay);
+            this.messagePollTimer = window.setTimeout(async () => {
+                await this.fetchMessages(true, { auto: true });
+                if (!this.state.selectedSessionId) {
+                    return;
+                }
+                const elapsed = Date.now() - this.messagePollStart;
+                this.messagePollDelay = elapsed >= 180000 ? 3000 : 1000;
+                this.scheduleMessagePoll(this.messagePollDelay);
+            }, nextDelay);
+            this.state.polling.messages = this.messagePollTimer;
+        }
+
+        stopMessagePolling() {
+            if (this.messagePollTimer) {
+                clearTimeout(this.messagePollTimer);
+                this.messagePollTimer = null;
+            }
+            this.state.polling.messages = null;
+        }
+
+        async fetchSessions(options = {}) {
+            if (typeof options === 'boolean') {
+                options = { initial: options };
+            }
+            const {
+                initial = false,
+                manual = false,
+                heartbeat = false,
+                silent = false,
+                auto = false,
+            } = options;
+
             const previousPendingIds = new Set((this.state.sessions.pending || []).map((session) => session.id));
             try {
                 const response = await fetch(`${API_BASE}live/sessions?limit=30`, {
@@ -248,12 +368,35 @@
                 const data = await response.json();
 
                 if (!response.ok || !data.success) {
-                    return;
+                    if (!silent) {
+                        this.handleConnectivityDrop();
+                    }
+                    return false;
                 }
 
-                this.state.sessions.pending = data.pending || [];
-                this.state.sessions.active = data.active || [];
-                this.state.sessions.recent = data.recent || [];
+                this.handleConnectivityRestore();
+
+                const payload = data.sessions || {};
+                this.state.sessions.pending = Array.isArray(payload.pending) ? payload.pending : [];
+                this.state.sessions.active = Array.isArray(payload.active) ? payload.active : [];
+                this.state.sessions.recent = Array.isArray(payload.recent) ? payload.recent : [];
+
+                const counts = data.meta?.counts;
+                if (counts) {
+                    if (this.elements.counters.pending) {
+                        this.elements.counters.pending.textContent = counts.pending ?? this.state.sessions.pending.length;
+                    }
+                    if (this.elements.counters.active) {
+                        this.elements.counters.active.textContent = counts.active ?? this.state.sessions.active.length;
+                    }
+                } else {
+                    if (this.elements.counters.pending) {
+                        this.elements.counters.pending.textContent = this.state.sessions.pending.length;
+                    }
+                    if (this.elements.counters.active) {
+                        this.elements.counters.active.textContent = this.state.sessions.active.length;
+                    }
+                }
 
                 const newPending = this.state.sessions.pending.find((session) => !previousPendingIds.has(session.id));
                 if (newPending && !this.pendingNotified.has(newPending.id)) {
@@ -271,8 +414,13 @@
                     this.openSession(this.focusTarget);
                     this.focusTarget = null;
                 }
+                return true;
             } catch (error) {
                 console.error('LiveAgentCenter: failed to fetch sessions', error);
+                if (!silent) {
+                    this.handleConnectivityDrop();
+                }
+                return false;
             }
         }
 
@@ -298,13 +446,6 @@
 
                 list.appendChild(fragment);
             });
-
-            if (this.elements.counters.pending) {
-                this.elements.counters.pending.textContent = this.state.sessions.pending.length;
-            }
-            if (this.elements.counters.active) {
-                this.elements.counters.active.textContent = this.state.sessions.active.length;
-            }
 
             if (this.state.selectedSessionId) {
                 this.highlightActiveCard(this.state.selectedSessionId);
@@ -414,13 +555,19 @@
                 accept.className = 'button button-primary';
                 accept.dataset.action = 'accept';
                 accept.innerHTML = `<span class="dashicons dashicons-yes"></span>${this.config.strings?.accept || 'Accept'}`;
-                actions.appendChild(accept);
+                const acceptWrap = this.wrapActionWithHelp(accept, this.config.strings?.tooltipAccept, 'accept');
+                if (acceptWrap) {
+                    actions.appendChild(acceptWrap);
+                }
 
                 const decline = document.createElement('button');
                 decline.className = 'button';
                 decline.dataset.action = 'decline';
                 decline.innerHTML = `<span class="dashicons dashicons-no-alt"></span>${this.config.strings?.decline || 'Decline'}`;
-                actions.appendChild(decline);
+                const declineWrap = this.wrapActionWithHelp(decline, this.config.strings?.tooltipDecline, 'decline');
+                if (declineWrap) {
+                    actions.appendChild(declineWrap);
+                }
 
                 card.appendChild(actions);
             }
@@ -486,14 +633,13 @@
                 return;
             }
 
-            if (this.state.polling.messages) {
-                clearInterval(this.state.polling.messages);
-                this.state.polling.messages = null;
-            }
+            this.stopMessagePolling();
 
             this.state.selectedSessionId = sessionId;
             this.state.selectedSessionStatus = status;
             this.state.lastMessageId = null;
+            this.lastMessageEtag = null;
+            this.lastUserMessageId[sessionId] = null;
 
             this.highlightActiveCard(sessionId);
             this.elements.emptyState.hidden = true;
@@ -586,6 +732,7 @@
                     this.elements.pageUrl.textContent = this.extractPath(session.page_url);
                     this.elements.pageUrl.href = session.page_url;
                     this.elements.pageUrl.hidden = false;
+                    this.attachTooltip(this.elements.pageUrl, session.page_url, { focus: true });
                 } else {
                     this.elements.pageUrl.textContent = '—';
                     this.elements.pageUrl.removeAttribute('href');
@@ -641,11 +788,27 @@
             if (this.elements.detailEmail) {
                 this.elements.detailEmail.textContent = session.user_email || '—';
             }
+            if (this.elements.detailIp) {
+                const ipAddress = session.user_ip || '—';
+                this.elements.detailIp.textContent = ipAddress;
+                if (ipAddress && ipAddress !== '—') {
+                    this.attachTooltip(this.elements.detailIp, ipAddress, { focus: true });
+                }
+            }
             if (this.elements.detailDomain) {
                 this.elements.detailDomain.textContent = session.domain || '—';
             }
             if (this.elements.detailAuth) {
                 this.elements.detailAuth.textContent = this.formatAuthProvider(session.auth_plugin);
+            }
+            if (this.elements.detailUa) {
+                if (session.user_agent) {
+                    const uaDisplay = this.truncate(session.user_agent, 88);
+                    this.elements.detailUa.textContent = uaDisplay;
+                    this.attachTooltip(this.elements.detailUa, session.user_agent, { focus: true });
+                } else {
+                    this.elements.detailUa.textContent = '—';
+                }
             }
             if (this.elements.detailStarted) {
                 this.elements.detailStarted.textContent = session.started_at ? this.formatAbsoluteTime(session.started_at) : '—';
@@ -664,16 +827,25 @@
 
             if (session.status === 'pending') {
                 const accept = this.createHeaderButton('button button-primary', this.config.strings?.accept || 'Accept', 'dashicons-yes');
-                accept.addEventListener('click', () => this.acceptSession(session.id));
+                accept.addEventListener('click', () => this.acceptSession(session.id, null, accept));
+                const acceptWrap = this.wrapActionWithHelp(accept, this.config.strings?.tooltipAccept, 'accept-header');
+                if (acceptWrap) {
+                    this.elements.actionBar.appendChild(acceptWrap);
+                }
 
                 const decline = this.createHeaderButton('button', this.config.strings?.decline || 'Decline', 'dashicons-no-alt');
-                decline.addEventListener('click', () => this.declineSession(session.id));
-
-                this.elements.actionBar.append(accept, decline);
+                decline.addEventListener('click', () => this.declineSession(session.id, decline));
+                const declineWrap = this.wrapActionWithHelp(decline, this.config.strings?.tooltipDecline, 'decline-header');
+                if (declineWrap) {
+                    this.elements.actionBar.appendChild(declineWrap);
+                }
             } else if (session.status === 'active') {
                 const close = this.createHeaderButton('button button-secondary', this.config.strings?.close || 'End Session', 'dashicons-no-alt');
-                close.addEventListener('click', () => this.closeSession(session.id));
-                this.elements.actionBar.append(close);
+                close.addEventListener('click', () => this.closeSession(session.id, close));
+                const closeWrap = this.wrapActionWithHelp(close, this.config.strings?.tooltipClose, 'close-header');
+                if (closeWrap) {
+                    this.elements.actionBar.appendChild(closeWrap);
+                }
             }
         }
 
@@ -725,7 +897,12 @@
             return button;
         }
 
-        async fetchMessages(incremental = false) {
+        async fetchMessages(incremental = false, options = {}) {
+            if (typeof options === 'boolean') {
+                options = { manual: options };
+            }
+            const { auto = false } = options;
+
             const sessionId = this.state.selectedSessionId;
             if (!sessionId) {
                 return;
@@ -739,58 +916,85 @@
                 params.set('after', this.state.lastMessageId);
             }
 
+            const headers = new Headers({
+                'X-WP-Nonce': window.PAX_LIVE?.nonce || this.config.nonce || ''
+            });
+
+            if (this.lastMessageEtag) {
+                headers.set('If-None-Match', this.lastMessageEtag);
+            }
+
             const previousUserMessageId = this.lastUserMessageId[sessionId] || null;
 
             try {
-                const response = await this.request(`${REST_ROUTES.messages}?${params.toString()}`, {
-                    method: 'GET'
+                const response = await fetch(`${REST_ROUTES.messages}?${params.toString()}`, {
+                    method: 'GET',
+                    headers,
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
 
-                if (!response.success) {
+                if (response.status === 304) {
+                    this.handleConnectivityRestore();
                     return;
                 }
 
-                if (response.session) {
-                    this.renderSessionHeader(response.session);
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error('Failed to fetch messages');
                 }
 
-                const messages = response.messages || [];
-                let latestUserMessageId = previousUserMessageId;
-                if (messages.length) {
-                    const userMessage = [...messages].reverse().find((msg) => msg.sender === 'user');
-                    if (userMessage?.id) {
-                        latestUserMessageId = userMessage.id;
-                    }
+                this.handleConnectivityRestore();
+
+                const etag = response.headers.get('ETag') || data.etag;
+                if (etag) {
+                    this.lastMessageEtag = etag;
                 }
+
+                if (data.session) {
+                    this.renderSessionHeader(data.session);
+                }
+
+                const messages = Array.isArray(data.messages) ? data.messages : [];
 
                 if (!incremental) {
                     this.renderMessages(messages, true);
-                    const lastMessage = response.session?.last_message;
+                    const lastMessage = data.session?.last_message;
                     if (lastMessage?.sender === 'user' && lastMessage?.id) {
                         this.lastUserMessageId[sessionId] = lastMessage.id;
                     }
+                    this.scrollToBottom(true);
                 } else if (messages.length) {
                     this.renderMessages(messages, false);
-                    if (latestUserMessageId && latestUserMessageId !== previousUserMessageId && response.session?.status === 'active') {
-                        this.lastUserMessageId[sessionId] = latestUserMessageId;
-                        this.notifyNewMessage();
-                        this.markMessagesRead();
+                }
+
+                if (data.last_id) {
+                    this.state.lastMessageId = data.last_id;
+                } else if (messages.length) {
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg?.id) {
+                        this.state.lastMessageId = lastMsg.id;
                     }
                 }
 
-                if (response.last_id) {
-                    this.state.lastMessageId = response.last_id;
+                if (messages.length) {
+                    const latestUserMessage = [...messages].reverse().find((msg) => msg.sender === 'user');
+                    if (latestUserMessage?.id && latestUserMessage.id !== previousUserMessageId) {
+                        this.lastUserMessageId[sessionId] = latestUserMessage.id;
+                        if (data.session?.status === 'active') {
+                            this.notifyNewMessage();
+                            this.markMessagesRead();
+                        }
+                    }
                 }
 
-                if (response.typing) {
-                    this.toggleTyping(response.typing.user);
-                }
-
-                if (!incremental) {
-                    this.scrollToBottom(true);
+                if (data.typing) {
+                    this.toggleTyping(data.typing.user);
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: failed to fetch messages', error);
+                this.handleConnectivityDrop();
             }
         }
 
@@ -907,30 +1111,34 @@
             this.elements.input.style.height = `${Math.min(this.elements.input.scrollHeight, 160)}px`;
         }
 
-        async acceptSession(sessionId, card) {
+        async acceptSession(sessionId, card, trigger) {
             if (!sessionId) {
                 return;
             }
             if (card) {
                 card.classList.add('pax-session-card--processing');
             }
+            this.setButtonLoading(trigger, true);
+
             try {
                 await this.request(REST_ROUTES.accept, {
                     method: 'POST',
                     body: { session_id: sessionId }
                 });
-                this.fetchSessions();
-                this.loadSession(sessionId, 'active');
+                await this.fetchSessions({ manual: true });
+                await this.loadSession(sessionId, 'active');
             } catch (error) {
                 console.error('LiveAgentCenter: accept failed', error);
+                this.toast(this.config.strings?.refreshFailed || 'Refresh failed. Please try again.');
             } finally {
+                this.setButtonLoading(trigger, false);
                 if (card) {
                     card.classList.remove('pax-session-card--processing');
                 }
             }
         }
 
-        async declineSession(sessionId) {
+        async declineSession(sessionId, trigger) {
             if (!sessionId) {
                 return;
             }
@@ -938,23 +1146,30 @@
             if (!window.confirm(confirmMessage)) {
                 return;
             }
+
+            this.setButtonLoading(trigger, true);
+
             try {
                 await this.request(REST_ROUTES.decline, {
                     method: 'POST',
                     body: { session_id: sessionId }
                 });
-                this.fetchSessions();
+                await this.fetchSessions({ manual: true });
                 if (this.state.selectedSessionId === sessionId) {
                     this.state.selectedSessionId = null;
                     this.elements.panel.hidden = true;
                     this.elements.emptyState.hidden = false;
+                    this.stopMessagePolling();
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: decline failed', error);
+                this.toast(this.config.strings?.refreshFailed || 'Refresh failed. Please try again.');
+            } finally {
+                this.setButtonLoading(trigger, false);
             }
         }
 
-        async closeSession(sessionId) {
+        async closeSession(sessionId, trigger) {
             if (!sessionId) {
                 return;
             }
@@ -962,15 +1177,21 @@
             if (!window.confirm(confirmMessage)) {
                 return;
             }
+
+            this.setButtonLoading(trigger, true);
+
             try {
                 await this.request(REST_ROUTES.close, {
                     method: 'POST',
                     body: { session_id: sessionId }
                 });
-                this.fetchSessions();
-                this.loadSession(sessionId, 'recent');
+                await this.fetchSessions({ manual: true });
+                await this.loadSession(sessionId, 'recent');
             } catch (error) {
                 console.error('LiveAgentCenter: close session failed', error);
+                this.toast(this.config.strings?.refreshFailed || 'Refresh failed. Please try again.');
+            } finally {
+                this.setButtonLoading(trigger, false);
             }
         }
 
@@ -993,18 +1214,18 @@
                     ...extra
                 };
 
-                const response = await this.request(REST_ROUTES.message, {
+                await this.request(REST_ROUTES.message, {
                     method: 'POST',
                     body: payload
                 });
 
-                if (response.success && response.message) {
-                    this.renderMessages([response.message], false);
-                    this.state.lastMessageId = response.message.id;
+                if (!extra.attachment_id && this.elements.input) {
                     this.elements.input.value = '';
                     this.autoResizeInput();
-                    this.emitTyping(false);
                 }
+
+                this.emitTyping(false);
+                await this.fetchMessages(true, { manual: true });
             } catch (error) {
                 console.error('LiveAgentCenter: send failed', error);
                 window.alert(this.config.strings?.messageFailed || 'Unable to send message. Please try again.');
@@ -1049,6 +1270,239 @@
                 this.elements.sendButton.disabled = false;
                 this.elements.sendButton.querySelector('.pax-send-label').textContent = this.config.strings?.send || 'Send';
             }
+        }
+
+        async handleManualRefresh() {
+            if (!this.elements.refreshButton || this.elements.refreshButton.classList.contains('is-loading')) {
+                return;
+            }
+
+            this.setRefreshLoading(true);
+            this.stopSessionPolling();
+
+            try {
+                const success = await this.fetchSessions({ manual: true });
+                if (success && this.state.selectedSessionId) {
+                    await this.fetchMessages(true, { manual: true });
+                }
+                if (success && this.connectionState === 'online') {
+                    this.toast(this.config.strings?.refreshComplete || 'Sessions updated');
+                } else if (!success) {
+                    this.toast(this.config.strings?.refreshFailed || 'Refresh failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('LiveAgentCenter: manual refresh failed', error);
+                this.toast(this.config.strings?.refreshFailed || 'Refresh failed. Please try again.');
+            } finally {
+                this.setRefreshLoading(false);
+                this.startSessionPolling();
+            }
+        }
+
+        setRefreshLoading(isLoading) {
+            if (!this.elements.refreshButton) {
+                return;
+            }
+            const button = this.elements.refreshButton;
+            const label = button.querySelector('.pax-refresh-label');
+            if (label && !button.dataset.labelDefault) {
+                button.dataset.labelDefault = label.textContent.trim();
+            }
+            button.classList.toggle('is-loading', !!isLoading);
+            button.disabled = !!isLoading;
+            if (isLoading) {
+                button.setAttribute('aria-busy', 'true');
+            } else {
+                button.removeAttribute('aria-busy');
+            }
+            if (label) {
+                label.textContent = isLoading
+                    ? (this.config.strings?.refreshing || 'Refreshing…')
+                    : (this.config.strings?.refreshLabel || button.dataset.labelDefault || 'Refresh');
+            }
+        }
+
+        setButtonLoading(button, isLoading) {
+            if (!button) {
+                return;
+            }
+            button.disabled = !!isLoading;
+            button.classList.toggle('is-loading', !!isLoading);
+            if (isLoading) {
+                button.setAttribute('aria-busy', 'true');
+            } else {
+                button.removeAttribute('aria-busy');
+            }
+        }
+
+        handleConnectivityDrop() {
+            if (this.connectionState !== 'offline') {
+                this.connectionState = 'offline';
+                if (this.elements.root) {
+                    this.elements.root.classList.add('is-offline');
+                }
+                this.toast(this.config.strings?.offlineNotice || 'Connection lost. We will retry automatically…');
+            }
+        }
+
+        handleConnectivityRestore() {
+            if (this.connectionState !== 'online') {
+                this.connectionState = 'online';
+                if (this.elements.root) {
+                    this.elements.root.classList.remove('is-offline');
+                }
+                this.toast(this.config.strings?.reconnected || 'Back online — sessions are up to date.');
+            }
+        }
+
+        wrapActionWithHelp(button, tooltip, key) {
+            if (!button) {
+                return null;
+            }
+            if (tooltip) {
+                this.attachTooltip(button, tooltip);
+            }
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pax-action-with-help';
+            wrapper.appendChild(button);
+            const helpIcon = this.createHelpIcon(tooltip, key);
+            if (helpIcon) {
+                wrapper.appendChild(helpIcon);
+            }
+            return wrapper;
+        }
+
+        createHelpIcon(text, key) {
+            if (!text) {
+                return null;
+            }
+            const help = document.createElement('button');
+            help.type = 'button';
+            help.className = 'pax-help-icon';
+            help.textContent = '?';
+            if (key) {
+                help.dataset.help = key;
+            }
+            help.setAttribute('aria-label', text);
+            this.attachTooltip(help, text, { focus: true });
+            help.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.toggleTooltip(help);
+            });
+            return help;
+        }
+
+        attachTooltip(target, text, options = {}) {
+            if (!target || !text) {
+                return;
+            }
+            const opts = {
+                focus: false,
+                ...options
+            };
+            target.dataset.tooltip = text;
+            if (opts.focus && !target.hasAttribute('tabindex')) {
+                target.setAttribute('tabindex', '0');
+            }
+            if (this.tooltipHandlers.has(target)) {
+                return;
+            }
+            const show = () => this.showTooltip(target);
+            const hide = () => this.hideTooltip(target);
+            const touch = (event) => {
+                this.showTooltip(target);
+                if (this.tooltipHideTimer) {
+                    clearTimeout(this.tooltipHideTimer);
+                }
+                this.tooltipHideTimer = window.setTimeout(() => this.hideTooltip(target), 1800);
+                event.preventDefault();
+                event.stopPropagation();
+            };
+            target.addEventListener('mouseenter', show);
+            target.addEventListener('mouseleave', hide);
+            target.addEventListener('focus', show);
+            target.addEventListener('blur', hide);
+            target.addEventListener('touchstart', touch, { passive: false });
+            this.tooltipHandlers.set(target, { show, hide, touch });
+        }
+
+        toggleTooltip(target) {
+            if (this.tooltipElement && this.tooltipElement.classList.contains('is-visible') && this.currentTooltipTarget === target) {
+                this.hideTooltip(target);
+            } else {
+                this.showTooltip(target);
+            }
+        }
+
+        showTooltip(target) {
+            if (!target || !target.dataset.tooltip) {
+                return;
+            }
+            const tooltip = this.ensureTooltipElement();
+            tooltip.textContent = target.dataset.tooltip;
+            tooltip.classList.add('is-visible');
+            this.currentTooltipTarget = target;
+
+            window.requestAnimationFrame(() => {
+                this.positionTooltip(target, tooltip);
+            });
+        }
+
+        hideTooltip(target) {
+            if (!this.tooltipElement) {
+                return;
+            }
+            if (target && this.currentTooltipTarget && target !== this.currentTooltipTarget) {
+                return;
+            }
+            this.tooltipElement.classList.remove('is-visible', 'pax-tooltip--below');
+            this.currentTooltipTarget = null;
+            if (this.tooltipHideTimer) {
+                clearTimeout(this.tooltipHideTimer);
+                this.tooltipHideTimer = null;
+            }
+        }
+
+        ensureTooltipElement() {
+            if (!this.tooltipElement) {
+                this.tooltipElement = document.createElement('div');
+                this.tooltipElement.className = 'pax-tooltip';
+                document.body.appendChild(this.tooltipElement);
+            }
+            return this.tooltipElement;
+        }
+
+        positionTooltip(target, tooltip) {
+            const rect = target.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            const scrollY = window.scrollY || window.pageYOffset;
+            const scrollX = window.scrollX || window.pageXOffset;
+
+            let top = rect.top + scrollY - tooltipRect.height - 12;
+            tooltip.classList.remove('pax-tooltip--below');
+            if (top < scrollY + 8) {
+                top = rect.bottom + scrollY + 12;
+                tooltip.classList.add('pax-tooltip--below');
+            }
+
+            let left = rect.left + scrollX + (rect.width / 2) - (tooltipRect.width / 2);
+            const minLeft = scrollX + 12;
+            const maxLeft = scrollX + window.innerWidth - tooltipRect.width - 12;
+            left = Math.min(Math.max(left, minLeft), maxLeft);
+
+            tooltip.style.top = `${top}px`;
+            tooltip.style.left = `${left}px`;
+        }
+
+        truncate(text, length = 80) {
+            if (!text) {
+                return '';
+            }
+            if (text.length <= length) {
+                return text;
+            }
+            return `${text.slice(0, length - 1)}…`;
         }
 
         async pingRest() {

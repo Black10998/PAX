@@ -277,19 +277,26 @@ function pax_sup_enqueue_public_assets() {
     wp_localize_script( 'pax-support-pro', 'paxSupportPro', $localize );
 
     wp_localize_script(
-        'pax-live-agent-addon',
+        'pax-live-widget',
         'PAX_LIVE',
         array(
             'restBase' => esc_url_raw( rest_url( 'pax/v1' ) ),
             'nonce'    => $rest_nonce,
             'noStore'  => true,
             'strings'  => array(
-                'connecting'  => __( 'Connecting to an agent…', 'pax-support-pro' ),
-                'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
-                'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
-                'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
-                'newRequest'  => __( 'New live request', 'pax-support-pro' ),
-                'newMessage'  => __( 'New message', 'pax-support-pro' ),
+                'connecting'   => __( 'Connecting to support…', 'pax-support-pro' ),
+                'queued'       => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
+                'connected'    => __( 'Agent connected!', 'pax-support-pro' ),
+                'closed'       => __( 'Chat ended — thanks for chatting with us!', 'pax-support-pro' ),
+                'statusError'  => __( 'Unable to connect right now. Please try again.', 'pax-support-pro' ),
+                'newRequest'   => __( 'New live request', 'pax-support-pro' ),
+                'newMessage'   => __( 'New message', 'pax-support-pro' ),
+                'typeHere'     => __( 'Type your message…', 'pax-support-pro' ),
+                'endChat'      => __( 'End Chat', 'pax-support-pro' ),
+                'rateChat'     => __( 'Rate this chat', 'pax-support-pro' ),
+                'submit'       => __( 'Submit', 'pax-support-pro' ),
+                'startNewChat' => __( 'Start New Chat', 'pax-support-pro' ),
+                'offline'      => __( 'You appear to be offline. Retrying…', 'pax-support-pro' ),
             ),
             'quickPrompts' => array(
                 __( 'I need help with my order', 'pax-support-pro' ),
@@ -297,7 +304,7 @@ function pax_sup_enqueue_public_assets() {
                 __( 'Speak to a human agent', 'pax-support-pro' ),
             ),
             'assets' => array(
-                'ding' => esc_url_raw( PAX_SUP_URL . 'assets/audio/ding.mp3' ),
+                'ding' => '',
             ),
         )
     );

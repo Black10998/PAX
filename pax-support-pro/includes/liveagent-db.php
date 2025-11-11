@@ -22,8 +22,11 @@ function pax_sup_create_liveagent_table() {
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED NOT NULL,
         agent_id bigint(20) UNSIGNED DEFAULT NULL,
-        status enum('pending','active','closed') NOT NULL DEFAULT 'pending',
+        status enum('pending','active','declined','closed') NOT NULL DEFAULT 'pending',
         started_at datetime NOT NULL,
+        accepted_at datetime DEFAULT NULL,
+        declined_at datetime DEFAULT NULL,
+        closed_at datetime DEFAULT NULL,
         ended_at datetime DEFAULT NULL,
         messages longtext DEFAULT NULL,
         attachments_path text DEFAULT NULL,
@@ -37,6 +40,9 @@ function pax_sup_create_liveagent_table() {
         auth_plugin varchar(60) DEFAULT 'core',
         source varchar(60) DEFAULT NULL,
         session_notes text DEFAULT NULL,
+        rating_stars tinyint(1) DEFAULT NULL,
+        rating_comment text DEFAULT NULL,
+        rated_at datetime DEFAULT NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
         KEY agent_id (agent_id),
@@ -57,13 +63,65 @@ function pax_sup_create_liveagent_table() {
 }
 
 /**
+ * Determine if the IP has exceeded the rate limit for creating sessions.
+ *
+ * @param string $ip     Client IP.
+ * @param int    $limit  Maximum number of sessions allowed within window.
+ * @param int    $window Window in seconds.
+ *
+ * @return bool
+ */
+function pax_live_agent_is_rate_limited( $ip, $limit = 3, $window = 300 ) {
+    if ( empty( $ip ) ) {
+        return false;
+    }
+
+    $key   = 'pax_live_rate_' . md5( $ip );
+    $value = get_transient( $key );
+
+    if ( ! is_array( $value ) || empty( $value['start'] ) || time() - $value['start'] > $window ) {
+        return false;
+    }
+
+    return (int) $value['count'] >= $limit;
+}
+
+/**
+ * Increment the rate counter for a specific IP.
+ *
+ * @param string $ip     Client IP.
+ * @param int    $window Window in seconds.
+ *
+ * @return void
+ */
+function pax_live_agent_mark_rate_usage( $ip, $window = 300 ) {
+    if ( empty( $ip ) ) {
+        return;
+    }
+
+    $key   = 'pax_live_rate_' . md5( $ip );
+    $value = get_transient( $key );
+
+    if ( ! is_array( $value ) || empty( $value['start'] ) || time() - $value['start'] > $window ) {
+        $value = array(
+            'count' => 1,
+            'start' => time(),
+        );
+    } else {
+        $value['count'] = (int) $value['count'] + 1;
+    }
+
+    set_transient( $key, $value, $window );
+}
+
+/**
  * Create a new live agent session
  */
 function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     global $wpdb;
 
     $user = get_userdata( $user_id );
-    if ( ! $user ) {
+    if ( ! $user instanceof WP_User ) {
         return false;
     }
 
@@ -75,11 +133,13 @@ function pax_sup_create_liveagent_session( $user_id, $args = array() ) {
     $user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? substr( sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ), 0, 255 ) : '';
     $domain     = wp_parse_url( home_url(), PHP_URL_HOST );
 
+    $now = current_time( 'mysql' );
+
     $data = array(
         'user_id'       => $user_id,
         'status'        => 'pending',
-        'started_at'    => current_time( 'mysql' ),
-        'last_activity' => current_time( 'mysql' ),
+        'started_at'    => $now,
+        'last_activity' => $now,
         'user_name'     => $user->display_name,
         'user_email'    => $user->user_email,
         'user_ip'       => $user_ip,
@@ -122,27 +182,38 @@ function pax_live_agent_session_create( $payload ) {
         'auth_plugin' => 'core',
         'source'      => '',
         'messages'    => array(),
+        'notes'       => array(),
     );
 
     $data = wp_parse_args( $payload, $defaults );
 
     $table_name = $wpdb->prefix . 'pax_liveagent_sessions';
 
+    $now        = current_time( 'mysql' );
+    $user_agent = substr( sanitize_text_field( $data['user_agent'] ), 0, 255 );
+    $messages   = is_array( $data['messages'] ) ? $data['messages'] : array();
+    $notes      = is_array( $data['notes'] ) ? $data['notes'] : array();
+
+    if ( empty( $notes['token'] ) ) {
+        $notes['token'] = wp_generate_password( 32, false, false );
+    }
+
     $prepared = array(
         'status'        => sanitize_key( $data['status'] ),
         'user_id'       => $data['user_id'] ? (int) $data['user_id'] : 0,
         'agent_id'      => isset( $data['agent_id'] ) ? (int) $data['agent_id'] : null,
-        'started_at'    => current_time( 'mysql' ),
-        'last_activity' => current_time( 'mysql' ),
+        'started_at'    => $now,
+        'last_activity' => $now,
         'user_name'     => sanitize_text_field( $data['user_name'] ),
         'user_email'    => sanitize_email( $data['user_email'] ),
         'user_ip'       => sanitize_text_field( $data['user_ip'] ),
-        'user_agent'    => substr( sanitize_text_field( $data['user_agent'] ), 0, 255 ),
+        'user_agent'    => $user_agent,
         'page_url'      => $data['page_url'] ? esc_url_raw( $data['page_url'] ) : '',
         'domain'        => sanitize_text_field( $data['domain'] ),
         'auth_plugin'   => sanitize_key( $data['auth_plugin'] ),
         'source'        => sanitize_text_field( $data['source'] ),
-        'messages'      => wp_json_encode( is_array( $data['messages'] ) ? $data['messages'] : array() ),
+        'messages'      => wp_json_encode( $messages ),
+        'session_notes' => wp_json_encode( $notes ),
     );
 
     $formats = array(
@@ -160,6 +231,7 @@ function pax_live_agent_session_create( $payload ) {
         '%s', // auth_plugin
         '%s', // source
         '%s', // messages
+        '%s', // session_notes
     );
 
     if ( null === $prepared['agent_id'] ) {
@@ -252,8 +324,7 @@ function pax_sup_get_recent_liveagent_sessions( $limit = 20 ) {
 
     $sessions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC LIMIT %d",
-            'closed',
+            "SELECT * FROM $table_name WHERE status IN ('closed','declined') ORDER BY last_activity DESC LIMIT %d",
             $limit
         ),
         ARRAY_A
@@ -290,9 +361,23 @@ function pax_sup_update_liveagent_session_status( $session_id, $status, $agent_i
         $format[] = '%d';
     }
 
-    if ( $status === 'closed' ) {
-        $data['ended_at'] = current_time( 'mysql' );
+    $timestamp = current_time( 'mysql' );
+
+    if ( 'active' === $status ) {
+        $data['accepted_at'] = $timestamp;
         $format[] = '%s';
+    }
+
+    if ( 'declined' === $status ) {
+        $data['declined_at'] = $timestamp;
+        $format[] = '%s';
+    }
+
+    if ( 'closed' === $status ) {
+        $data['closed_at'] = $timestamp;
+        $format[]         = '%s';
+        $data['ended_at'] = $timestamp;
+        $format[]         = '%s';
     }
 
     if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {

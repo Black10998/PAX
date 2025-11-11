@@ -123,6 +123,54 @@
     font-size: 14px;
 }
 
+.pax-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pax-refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--pax-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--pax-text);
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--pax-transition);
+}
+
+.pax-refresh-btn .dashicons {
+    font-size: 16px;
+}
+
+.pax-refresh-btn .pax-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #ffffff;
+    animation: pax-spin 0.6s linear infinite;
+    display: none;
+}
+
+.pax-refresh-btn.is-loading {
+    cursor: progress;
+    opacity: 0.75;
+}
+
+.pax-refresh-btn.is-loading .dashicons {
+    opacity: 0;
+}
+
+.pax-refresh-btn.is-loading .pax-spinner {
+    display: inline-block;
+}
+
 .pax-header-diagnostics {
     display: grid;
     gap: 14px;
@@ -343,6 +391,14 @@
 .pax-session-card-actions {
     display: flex;
     gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.pax-action-with-help {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .pax-session-card-actions .button {
@@ -363,6 +419,104 @@
 .pax-session-card-actions .button:hover {
     transform: translateY(-1px);
     border-color: var(--pax-accent);
+}
+
+.pax-session-card-actions .button.is-loading,
+.pax-chat-header-actions .button.is-loading,
+.pax-action-with-help .button.is-loading {
+    position: relative;
+    padding-right: 2.35rem;
+}
+
+.pax-session-card-actions .button.is-loading::after,
+.pax-chat-header-actions .button.is-loading::after,
+.pax-action-with-help .button.is-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-top-color: #ffffff;
+    animation: pax-spin 0.6s linear infinite;
+    transform: translateY(-50%);
+}
+
+.pax-help-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--pax-text);
+    font-weight: 600;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--pax-transition);
+}
+
+.pax-help-icon:hover,
+.pax-help-icon:focus-visible {
+    border-color: var(--pax-accent);
+    background: rgba(110, 107, 250, 0.22);
+    color: #ffffff;
+    outline: none;
+}
+
+.pax-tooltip {
+    position: fixed;
+    z-index: 99999;
+    background: rgba(15, 19, 36, 0.96);
+    color: #f5f7ff;
+    padding: 0.45rem 0.7rem;
+    border-radius: 10px;
+    border: 1px solid rgba(110, 107, 250, 0.45);
+    box-shadow: 0 22px 48px rgba(5, 8, 21, 0.55);
+    font-size: 12px;
+    line-height: 1.35;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.pax-tooltip.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.pax-tooltip--below {
+    transform: translateY(6px);
+}
+
+.pax-liveagent-app.is-offline .pax-liveagent-header {
+    box-shadow: 0 0 0 1px rgba(229, 84, 84, 0.55);
+}
+
+.pax-liveagent-app.is-offline .pax-refresh-btn {
+    border-color: rgba(229, 84, 84, 0.65);
+}
+
+.pax-header-actions .pax-help-icon {
+    margin-left: 4px;
+}
+
+.pax-session-card-actions .pax-help-icon {
+    flex-shrink: 0;
+}
+
+@keyframes pax-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .pax-liveagent-workspace {
@@ -569,6 +723,11 @@
     word-break: break-word;
 }
 
+.pax-detail-row dd:focus {
+    outline: 1px dashed rgba(110, 107, 250, 0.6);
+    outline-offset: 2px;
+}
+
 .pax-detail-row a {
     color: var(--pax-accent);
     text-decoration: none;
@@ -640,6 +799,10 @@
 
 .pax-chat-composer .button-primary:hover {
     transform: translateY(-1px);
+}
+
+.pax-chat-composer .pax-composer-help {
+    margin-left: 6px;
 }
 
 .pax-chat-placeholder {
