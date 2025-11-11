@@ -102,7 +102,7 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 == Changelog ==
 
 = 5.8.9 - 2025-11-10 =
-* Live session auto-bootstrap, user detection, modern UI overhaul, and full REST sync stability improvements.
+* Live session bootstrap, user detection, spinner/tab fix, and reliable REST messaging.
 
 = 5.8.8 - 2025-11-10 =
 * Improved Live Agent connection, added smart onboarding UI, and redesigned interface with modern styling.

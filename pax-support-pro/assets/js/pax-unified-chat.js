@@ -2364,6 +2364,14 @@
                 this.stopPolling();
             }
 
+            const switchingToLive = mode === 'liveagent';
+            if (switchingToLive) {
+                if (typeof this.showLiveBanner === 'function' && !this.sessions.liveagent.sessionId) {
+                    this.showLiveBanner('connecting');
+                }
+                await this.ensureLiveAgentSession();
+            }
+
             // Update mode
             this.currentMode = mode;
 
@@ -2709,14 +2717,31 @@
 
                 const data = await response.json();
 
-                if (data.session_id) {
+                if (data.success && data.session) {
+                    const sessionSummary = data.session;
+                    this.sessions.liveagent.sessionId = sessionSummary.id || data.session_id || this.sessions.liveagent.sessionId;
+                    this.sessions.liveagent.status = sessionSummary.status || data.status || 'pending';
+                    this.sessions.liveagent.userName = sessionSummary.user_name || sessionSummary.userName || this.sessions.liveagent.userName;
+                    this.sessions.liveagent.userEmail = sessionSummary.user_email || sessionSummary.userEmail || this.sessions.liveagent.userEmail;
+                    this.saveState();
+                    console.log('Live Agent session created:', this.sessions.liveagent.sessionId);
+                    if (typeof this.syncLiveAgentStatus === 'function') {
+                        this.syncLiveAgentStatus();
+                    }
+                } else if (data.session_id) {
                     this.sessions.liveagent.sessionId = data.session_id;
                     this.sessions.liveagent.status = data.status || 'pending';
                     this.saveState();
                     console.log('Live Agent session created:', data.session_id);
+                    if (typeof this.syncLiveAgentStatus === 'function') {
+                        this.syncLiveAgentStatus();
+                    }
                 }
             } catch (error) {
                 console.error('Error creating Live Agent session:', error);
+                if (typeof this.hideLiveBanner === 'function') {
+                    this.hideLiveBanner();
+                }
             }
         }
 

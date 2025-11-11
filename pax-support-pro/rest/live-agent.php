@@ -86,10 +86,10 @@ function pax_register_live_agent_routes() {
 function pax_live_agent_start( $request ) {
     global $wpdb;
     
-    $user_meta     = $request->get_param( 'user_meta' ) ?: array();
-    $current_user  = wp_get_current_user();
-    $has_wp_user   = ( $current_user instanceof WP_User ) && $current_user->exists();
-    $resolved_name = $has_wp_user ? $current_user->display_name : sanitize_text_field( $user_meta['name'] ?? 'Guest' );
+    $user_meta      = $request->get_param( 'user_meta' ) ?: array();
+    $current_user   = wp_get_current_user();
+    $has_wp_user    = ( $current_user instanceof WP_User ) && $current_user->exists();
+    $resolved_name  = $has_wp_user ? $current_user->display_name : sanitize_text_field( $user_meta['name'] ?? 'Guest' );
     $resolved_email = $has_wp_user ? $current_user->user_email : sanitize_email( $user_meta['email'] ?? '' );
 
     $page_url = $request->get_param( 'page_url' );
@@ -117,10 +117,21 @@ function pax_live_agent_start( $request ) {
     
     pax_notify_admin_live_agent_request( $session_id, $session_data );
     
+    $session = pax_sup_get_liveagent_session( $session_id );
+    if ( $session && empty( $session['user_name'] ) ) {
+        $session['user_name'] = $resolved_name ?: 'Guest';
+    }
+
+    $summary = $session ? pax_live_agent_prepare_session_summary( $session, 'user' ) : array(
+        'id'     => $session_id,
+        'status' => 'pending',
+    );
+
     return rest_ensure_response( array(
+        'success'    => true,
         'session_id' => $session_id,
         'status'     => 'pending',
-        'rest_base'  => rest_url( 'pax/v1/' ),
+        'session'    => $summary,
     ) );
 }
 
