@@ -65,11 +65,21 @@ function pax_sup_rest_typing_status( $request ) {
 function pax_sup_rest_poll_updates( $request ) {
     pax_sup_liveagent_nocache_headers();
 
-    $session_id = $request->get_param( 'session_id' );
-    $last_message_id = $request->get_param( 'last_message_id' );
+    $session_id = (int) $request->get_param( 'session_id' );
+    $after_id   = $request->get_param( 'after' );
+
+    if ( '' === $after_id && $request->has_param( 'last_message_id' ) ) {
+        $after_id = $request->get_param( 'last_message_id' );
+    }
+
+    $after_id = (int) $after_id;
 
     if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-        error_log( sprintf( '[PAX Live Chat] Poll request - Session: %d, Last Message ID: %d', $session_id, $last_message_id ) );
+        error_log( sprintf( '[PAX Live Chat] Poll request - Session: %d, After: %d', $session_id, $after_id ) );
+    }
+
+    if ( $session_id <= 0 ) {
+        return new WP_Error( 'invalid_session', __( 'Invalid session ID', 'pax-support-pro' ), array( 'status' => 400 ) );
     }
 
     $session = pax_sup_get_liveagent_session( $session_id );
@@ -82,30 +92,33 @@ function pax_sup_rest_poll_updates( $request ) {
 
     $has_updates  = false;
     $new_messages = array();
-    $latest_id    = (int) $last_message_id;
+    $latest_id    = $after_id;
 
-    // Check for new messages by ID (more reliable than timestamp)
     if ( ! empty( $session['messages'] ) && is_array( $session['messages'] ) ) {
         foreach ( $session['messages'] as $message ) {
-            if ( isset( $message['id'] ) ) {
-                $message_id = (int) $message['id'];
-                if ( $message_id > $latest_id ) {
-                    $latest_id = $message_id;
-                }
-                if ( $message_id > $last_message_id ) {
-                    $new_messages[] = $message;
-                    $has_updates    = true;
-                }
+            if ( ! isset( $message['id'] ) ) {
+                continue;
+            }
+
+            $message_id = (int) $message['id'];
+            $latest_id  = max( $latest_id, $message_id );
+
+            $prepared = pax_sup_prepare_liveagent_message_for_response( $message );
+            if ( null === $prepared ) {
+                continue;
+            }
+            if ( $message_id > $after_id ) {
+                $new_messages[] = $prepared;
+                $has_updates    = true;
             }
         }
     }
 
     // Check typing status
-    $is_agent = current_user_can( 'manage_pax_chats' );
     $agent_typing = (bool) get_transient( "pax_typing_{$session_id}_agent" );
-    $user_typing = (bool) get_transient( "pax_typing_{$session_id}_user" );
+    $user_typing  = (bool) get_transient( "pax_typing_{$session_id}_user" );
 
-    if ( $agent_typing || $user_typing || ! empty( $new_messages ) ) {
+    if ( $agent_typing || $user_typing ) {
         $has_updates = true;
     }
 
@@ -120,7 +133,7 @@ function pax_sup_rest_poll_updates( $request ) {
             $user_typing ? '1' : '0',
         )
     );
-    $etag = '"' . hash( 'sha256', $etag_seed ) . '"';
+    $etag = 'W/"' . hash( 'sha256', $etag_seed ) . '"';
 
     $client_etag = trim( (string) $request->get_header( 'If-None-Match' ) );
     if (
@@ -129,7 +142,7 @@ function pax_sup_rest_poll_updates( $request ) {
         && empty( $new_messages )
         && ! $agent_typing
         && ! $user_typing
-        && (int) $last_message_id >= $latest_id
+        && $after_id >= $latest_id
     ) {
         $response = new WP_REST_Response( null, 304 );
         $response->header( 'ETag', $etag );
@@ -137,22 +150,23 @@ function pax_sup_rest_poll_updates( $request ) {
     }
 
     $response_body = array(
-        'success' => true,
-        'has_updates' => $has_updates,
-        'new_messages' => $new_messages,
-        'agent_typing' => $agent_typing,
-        'user_typing' => $user_typing,
-        'session_status' => $session['status'],
-        'last_activity' => $session['last_activity'],
-        'server_time' => current_time( 'mysql' ),
+        'success'         => true,
+        'has_updates'     => $has_updates,
+        'new_messages'    => $new_messages,
+        'agent_typing'    => $agent_typing,
+        'user_typing'     => $user_typing,
+        'session_status'  => sanitize_key( $session['status'] ),
+        'last_activity'   => isset( $session['last_activity'] ) ? sanitize_text_field( $session['last_activity'] ) : '',
+        'server_time'     => current_time( 'mysql' ),
+        'last_id'         => $latest_id,
         'last_message_id' => $latest_id,
     );
 
     if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-        error_log( sprintf( '[PAX Live Chat] Poll response - Updates: %s, New messages: %d, Status: %s', 
-            $has_updates ? 'yes' : 'no', 
-            count( $new_messages ), 
-            $session['status'] 
+        error_log( sprintf( '[PAX Live Chat] Poll response - Updates: %s, New messages: %d, Status: %s',
+            $has_updates ? 'yes' : 'no',
+            count( $new_messages ),
+            $session['status']
         ) );
     }
 

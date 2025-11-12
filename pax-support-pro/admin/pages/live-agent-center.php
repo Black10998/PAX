@@ -85,9 +85,15 @@ function pax_sup_render_live_agent_center_page() {
                         <h2><?php esc_html_e( 'Queue', 'pax-support-pro' ); ?></h2>
                         <p><?php esc_html_e( 'Monitor pending, active, and recently closed conversations.', 'pax-support-pro' ); ?></p>
                     </div>
-                    <button type="button" class="pax-help-icon" data-tooltip="<?php esc_attr_e( 'Sessions update automatically every second. Hover a card to preview metadata.', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'About the queue', 'pax-support-pro' ); ?>">
-                        <span class="dashicons dashicons-info-outline"></span>
-                    </button>
+                    <div class="pax-column-actions">
+                        <button type="button" class="pax-refresh-button button" id="pax-liveagent-refresh" data-tooltip="<?php esc_attr_e( 'Force refresh the session list', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'Refresh sessions', 'pax-support-pro' ); ?>">
+                            <span class="dashicons dashicons-update" aria-hidden="true"></span>
+                            <span class="pax-refresh-label"><?php esc_html_e( 'Refresh', 'pax-support-pro' ); ?></span>
+                        </button>
+                        <button type="button" class="pax-help-icon" data-tooltip="<?php esc_attr_e( 'Sessions update automatically every second while new requests are pending, then every few seconds.', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'About the queue', 'pax-support-pro' ); ?>">
+                            <span class="dashicons dashicons-info-outline"></span>
+                        </button>
+                    </div>
                 </header>
 
                 <nav class="pax-session-tabs" role="tablist">
@@ -213,6 +219,9 @@ function pax_sup_render_live_agent_center_page() {
                                     <span class="dashicons dashicons-arrow-right-alt2" aria-hidden="true"></span>
                                     <span class="pax-send-label"><?php esc_html_e( 'Send', 'pax-support-pro' ); ?></span>
                                 </button>
+                                  <span class="pax-send-hint" id="pax-send-hint" aria-live="polite">
+                                      <?php esc_html_e( 'Enter to send · Shift+Enter for newline', 'pax-support-pro' ); ?>
+                                  </span>
                             </div>
                         </div>
                     </div>

@@ -50,7 +50,9 @@
                 lastMessageId: null,
                 polling: {
                     sessions: null,
-                    messages: null
+                    messages: null,
+                    fastUntil: 0,
+                    lastHeartbeat: Date.now()
                 },
                 etags: {
                     sessions: null,
@@ -58,7 +60,9 @@
                 },
                 typingTimeout: null,
                 isSending: false,
-                audioEnabled: document.querySelector('.pax-liveagent-app')?.dataset.soundEnabled === '1'
+                audioEnabled: document.querySelector('.pax-liveagent-app')?.dataset.soundEnabled === '1',
+                refreshing: false,
+                defaultSendHint: ''
             };
 
             this.elements = {};
@@ -132,6 +136,13 @@
             this.elements.detailAuth = document.getElementById('pax-liveagent-detail-auth');
             this.elements.detailStarted = document.getElementById('pax-liveagent-detail-started');
             this.elements.detailLast = document.getElementById('pax-liveagent-detail-last');
+            this.elements.refreshButton = document.getElementById('pax-liveagent-refresh');
+            this.elements.sendHint = document.getElementById('pax-send-hint');
+
+            if ( this.elements.sendHint ) {
+                this.state.defaultSendHint = this.elements.sendHint.textContent.trim();
+                this.setSendHint(this.state.defaultSendHint, 'ready');
+            }
         }
 
         bindEvents() {
@@ -171,6 +182,10 @@
                 this.elements.sendButton.addEventListener('click', () => {
                     this.sendMessage();
                 });
+            }
+
+            if ( this.elements.refreshButton ) {
+                this.elements.refreshButton.addEventListener('click', () => this.handleManualRefresh());
             }
 
             if (this.elements.input) {
@@ -251,13 +266,58 @@
         }
 
         startSessionPolling() {
+            this.stopSessionPolling();
+            this.scheduleSessionPoll(0);
+        }
+
+        stopSessionPolling() {
             if (this.sessionPoll) {
-                clearInterval(this.sessionPoll);
+                clearTimeout(this.sessionPoll);
                 this.sessionPoll = null;
             }
-            this.fetchSessions();
-            if (!this.sessionPoll) {
-                this.sessionPoll = window.setInterval(() => this.fetchSessions(), 2000);
+        }
+
+        scheduleSessionPoll(delay) {
+            const nextDelay = Math.max(250, typeof delay === 'number' ? delay : this.getSessionPollDelay());
+            this.stopSessionPolling();
+            this.sessionPoll = window.setTimeout(() => this.sessionPollLoop(), nextDelay);
+        }
+
+        async sessionPollLoop() {
+            await this.fetchSessions(false, { heartbeat: true });
+            this.scheduleSessionPoll(this.getSessionPollDelay());
+        }
+
+        getSessionPollDelay() {
+            const now = Date.now();
+            if (now < this.state.polling.fastUntil) {
+                return 1000;
+            }
+            const elapsed = now - (this.state.polling.lastHeartbeat || 0);
+            if (elapsed >= 30000) {
+                return 1000;
+            }
+            return 3000;
+        }
+
+        async handleManualRefresh() {
+            if (this.state.refreshing) {
+                return;
+            }
+            this.state.refreshing = true;
+            if (this.elements.refreshButton) {
+                this.elements.refreshButton.disabled = true;
+                this.elements.refreshButton.classList.add('pax-refresh-button--loading');
+            }
+            try {
+                await this.fetchSessions(false, { force: true, trigger: 'refresh' });
+            } finally {
+                this.state.refreshing = false;
+                if (this.elements.refreshButton) {
+                    this.elements.refreshButton.disabled = false;
+                    this.elements.refreshButton.classList.remove('pax-refresh-button--loading');
+                }
+                this.scheduleSessionPoll(this.getSessionPollDelay());
             }
         }
 
@@ -283,8 +343,12 @@
             }
         }
 
-        async fetchSessions(initial = false) {
+        async fetchSessions(initial = false, options = {}) {
             const previousPendingIds = new Set((this.state.sessions.pending || []).map((session) => session.id));
+            const showSkeleton = initial || !!options.force;
+            if (showSkeleton) {
+                this.toggleSkeleton('sessions', true);
+            }
             try {
                 const response = await fetch(`${API_BASE}live/sessions?limit=30`, {
                     method: 'GET',
@@ -310,7 +374,16 @@
                 }
 
                 this.updateSessionLists();
-                this.toggleSkeleton('sessions', false);
+                if (showSkeleton) {
+                    this.toggleSkeleton('sessions', false);
+                }
+
+                const pendingCount = this.state.sessions.pending.length;
+                const now = Date.now();
+                if (pendingCount > 0 || options.force) {
+                    this.state.polling.fastUntil = now + 60000;
+                }
+                this.state.polling.lastHeartbeat = now;
 
                 if (initial && this.state.sessions.pending.length) {
                     this.loadSession(this.state.sessions.pending[0].id, 'pending');
@@ -322,7 +395,13 @@
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: failed to fetch sessions', error);
-                this.toggleSkeleton('sessions', false);
+                if (showSkeleton) {
+                    this.toggleSkeleton('sessions', false);
+                }
+            } finally {
+                if (!options.heartbeat) {
+                    this.state.polling.lastHeartbeat = Date.now();
+                }
             }
         }
 
@@ -441,12 +520,19 @@
                 badges.appendChild(badge);
             }
 
-            if (status === 'active') {
-                const badge = document.createElement('span');
-                badge.className = 'pax-chip pax-chip-secondary';
-                badge.textContent = this.config.strings?.live || 'Live';
-                badges.appendChild(badge);
-            }
+              if (status === 'active') {
+                  const badge = document.createElement('span');
+                  badge.className = 'pax-chip pax-chip-secondary';
+                  badge.textContent = this.config.strings?.live || 'Live';
+                  badges.appendChild(badge);
+              }
+
+              if ((session.status === 'closed' && !session.agent_id) || session.status === 'declined') {
+                  const declinedBadge = document.createElement('span');
+                  declinedBadge.className = 'pax-chip pax-chip-danger';
+                  declinedBadge.textContent = this.config.strings?.declined || 'Declined';
+                  badges.appendChild(declinedBadge);
+              }
 
             footer.appendChild(badges);
 
@@ -765,6 +851,13 @@
                 });
             }
 
+            if ((session.status === 'closed' && !session.agent_id) || session.status === 'declined') {
+                tags.push({
+                    label: this.config.strings?.declined || 'Declined',
+                    variant: 'danger'
+                });
+            }
+
             if (session.domain) {
                 tags.push({
                     label: session.domain,
@@ -781,7 +874,13 @@
 
             tags.forEach((tag) => {
                 const pill = document.createElement('span');
-                pill.className = `pax-chip${tag.variant === 'secondary' ? ' pax-chip-secondary' : ''}`;
+                let className = 'pax-chip';
+                if (tag.variant === 'secondary') {
+                    className += ' pax-chip-secondary';
+                } else if (tag.variant === 'danger') {
+                    className += ' pax-chip-danger';
+                }
+                pill.className = className;
                 pill.textContent = tag.label;
                 this.elements.tags.appendChild(pill);
             });
@@ -1036,6 +1135,18 @@
             this.elements.input.style.height = `${Math.min(this.elements.input.scrollHeight, 160)}px`;
         }
 
+        setSendHint(text, state = '') {
+            if (!this.elements.sendHint) {
+                return;
+            }
+            this.elements.sendHint.textContent = text || '';
+            if (state) {
+                this.elements.sendHint.dataset.state = state;
+            } else {
+                delete this.elements.sendHint.dataset.state;
+            }
+        }
+
         async acceptSession(sessionId, card) {
             if (!sessionId) {
                 return;
@@ -1114,6 +1225,11 @@
             }
 
             this.state.isSending = true;
+            const sendingLabel = this.config.strings?.sending || 'Sending…';
+            this.setSendHint(sendingLabel, 'busy');
+            if (this.elements.sendButton) {
+                this.elements.sendButton.disabled = true;
+            }
 
             try {
                 const payload = {
@@ -1131,12 +1247,20 @@
                     this.elements.input.value = '';
                     this.autoResizeInput();
                     this.emitTyping(false);
+                    this.setSendHint(this.config.strings?.sent || 'Sent', 'success');
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: send failed', error);
                 window.alert(this.config.strings?.messageFailed || 'Unable to send message. Please try again.');
+                this.setSendHint(this.config.strings?.messageFailed || 'Unable to send.', 'error');
             } finally {
                 this.state.isSending = false;
+                if (this.elements.sendButton) {
+                    this.elements.sendButton.disabled = false;
+                }
+                window.setTimeout(() => {
+                    this.setSendHint(this.state.defaultSendHint, 'ready');
+                }, 1200);
             }
         }
 

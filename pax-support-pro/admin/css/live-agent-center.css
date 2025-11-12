@@ -55,6 +55,12 @@
     color: var(--pax-text);
 }
 
+.pax-chip-danger {
+    border-color: rgba(229, 84, 84, 0.4);
+    background: rgba(229, 84, 84, 0.16);
+    color: #ffd7d7;
+}
+
 .pax-toast {
     position: fixed;
     right: 18px;
@@ -218,6 +224,12 @@
     padding: 0 20px;
 }
 
+.pax-column-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .pax-column-header h2 {
     margin: 0;
     font-size: 18px;
@@ -284,6 +296,36 @@
 .pax-help-icon[data-tooltip]:focus-visible::after {
     opacity: 1;
     transform: translate(-50%, -120%);
+}
+
+.pax-refresh-button.button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    border: 1px solid var(--pax-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--pax-text);
+    font-weight: 600;
+    padding: 6px 14px;
+    transition: var(--pax-transition);
+}
+
+.pax-refresh-button.button .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+}
+
+.pax-refresh-button.button:hover,
+.pax-refresh-button.button:focus-visible {
+    border-color: var(--pax-border-strong);
+    color: #ffffff;
+    outline: none;
+}
+
+.pax-refresh-button--loading .dashicons {
+    animation: pax-spin 1s linear infinite;
 }
 
 .pax-skeleton-stack {
@@ -887,6 +929,26 @@
     transform: translateY(-1px);
 }
 
+.pax-send-hint {
+    font-size: 12px;
+    color: var(--pax-muted);
+    transition: color 0.2s ease;
+    margin-left: auto;
+    padding-bottom: 2px;
+}
+
+.pax-send-hint[data-state="busy"] {
+    color: var(--pax-accent);
+}
+
+.pax-send-hint[data-state="success"] {
+    color: var(--pax-success);
+}
+
+.pax-send-hint[data-state="error"] {
+    color: var(--pax-danger);
+}
+
 .pax-chat-placeholder {
     border-radius: var(--pax-radius);
     border: 1px dashed var(--pax-border);
@@ -968,4 +1030,34 @@
 
 .pax-session-link:hover {
     text-decoration: underline;
+}
+
+[dir="rtl"] .pax-column-header,
+[dir="rtl"] .pax-column-actions,
+[dir="rtl"] .pax-session-card-header,
+[dir="rtl"] .pax-chat-session-meta,
+[dir="rtl"] .pax-chat-header-actions {
+    flex-direction: row-reverse;
+    text-align: right;
+}
+
+[dir="rtl"] .pax-session-card-subtitle,
+[dir="rtl"] .pax-chat-session-meta p,
+[dir="rtl"] .pax-send-hint {
+    text-align: right;
+    margin-left: 0;
+    margin-right: auto;
+}
+
+[dir="rtl"] .pax-refresh-button.button {
+    flex-direction: row-reverse;
+}
+
+@keyframes pax-spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
 }

@@ -486,16 +486,26 @@ function pax_live_agent_messages_stream( $request ) {
 
     $messages = array_map(
         function( $message ) {
-            $seq = (int) ( $message['seq'] ?? 0 );
+            $seq     = (int) ( $message['seq'] ?? 0 );
+            $sender  = isset( $message['sender'] ) ? sanitize_key( $message['sender'] ) : '';
+            $role    = isset( $message['role'] ) ? sanitize_key( $message['role'] ) : ( 'agent' === $sender ? 'admin' : 'user' );
+            $content = isset( $message['message'] ) ? wp_kses_post( $message['message'] ) : '';
+            $time    = isset( $message['timestamp'] ) ? sanitize_text_field( $message['timestamp'] ) : '';
+            $created = isset( $message['created_at'] ) ? sanitize_text_field( $message['created_at'] ) : $time;
+            $meta    = array();
+            if ( isset( $message['meta'] ) && is_array( $message['meta'] ) ) {
+                $meta = array_map( 'sanitize_text_field', $message['meta'] );
+            }
+
             return array(
                 'id'         => $seq,
                 'seq'        => $seq,
-                'role'       => $message['role'] ?? ( ( isset( $message['sender'] ) && 'agent' === $message['sender'] ) ? 'admin' : 'user' ),
-                'sender'     => $message['sender'] ?? '',
-                'content'    => $message['message'] ?? '',
-                'timestamp'  => $message['timestamp'] ?? '',
-                'created_at' => $message['created_at'] ?? ( $message['timestamp'] ?? '' ),
-                'meta'       => isset( $message['meta'] ) ? $message['meta'] : array(),
+                'role'       => $role,
+                'sender'     => $sender,
+                'content'    => $content,
+                'timestamp'  => $time,
+                'created_at' => $created,
+                'meta'       => $meta,
             );
         },
         array_values( $messages )
@@ -518,7 +528,7 @@ function pax_live_agent_messages_stream( $request ) {
             $typing_state['user'] ? '1' : '0',
         )
     );
-    $etag = '"' . hash( 'sha256', $etag_seed ) . '"';
+    $etag = 'W/"' . hash( 'sha256', $etag_seed ) . '"';
 
     $client_etag = trim( (string) $request->get_header( 'If-None-Match' ) );
     if (
@@ -536,9 +546,13 @@ function pax_live_agent_messages_stream( $request ) {
         'success'    => true,
         'messages'   => $messages,
         'session_id' => $session_id,
-        'status'     => $session['status'],
+        'status'     => sanitize_key( $session['status'] ),
         'last_id'    => $last_id,
-        'typing'     => $typing_state,
+        'last_message_id' => $last_id,
+        'typing'     => array(
+            'agent' => ! empty( $typing_state['agent'] ),
+            'user'  => ! empty( $typing_state['user'] ),
+        ),
     ) );
     $response->header( 'ETag', $etag );
 
@@ -550,7 +564,7 @@ function pax_live_agent_list_sessions( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
-    nocache_headers();
+    pax_live_agent_nocache();
 
     global $wpdb;
 

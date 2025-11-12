@@ -4,7 +4,7 @@ Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
 Requires at least: 6.2
 Tested up to: 6.4
 Requires PHP: 8.0
-Stable tag: 5.9.8
+Stable tag: 6.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -104,6 +104,12 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 6.4.0 - 2025-11-12 =
+* Instant 1s widget polling with `after=last_id`, weak ETags/304 handling, nocache headers, and automatic refresh after every send.
+* Futuristic Live Agent widget overhaul with glass UI, 100dvh/visualViewport sizing, launcher transitions, ARIA labels, and Enter/Shift+Enter keyboard controls.
+* Admin Live Agent Center refresh control, adaptive polling burst (1s → 3s), cooldown hints, skeleton states, RTL/focus styling, and declined session badges.
+* Hardened messaging endpoints with sanitized payloads, shared helpers, weak ETags, and consistent same-origin/no-store behavior across widget and admin REST routes.
 
 = 5.9.8 - 2025-11-10 =
 * Long-poll message streaming (≤25s) for Live Agent widget/admin with auto-retry, offline detection, and reconnect banners.

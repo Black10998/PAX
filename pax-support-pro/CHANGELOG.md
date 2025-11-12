@@ -5,6 +5,23 @@ All notable changes to PAX Support Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.0] - 2025-11-12
+
+### Added
+- 1s widget polling with `after=last_id`, weak ETags/304 responses, nocache headers, and automatic refresh after each send.
+- Completely redesigned Live Agent widget with glass UI, visualViewport-aware 100dvh/svh sizing, launcher transitions, ARIA labels, and Enter/Shift+Enter shortcuts.
+- Admin Live Agent Center refresh control, adaptive polling burst (1s → 3s), cooldown hints, skeleton loaders, RTL/focus styling, and declined session badges.
+
+### Changed
+- Messaging REST endpoints sanitize payloads, emit weak ETags, and enforce same-origin/no-store caching semantics across widget and admin APIs.
+- Widget overlay/launcher handling now tracks visualViewport updates to eliminate mobile jitter while preserving ARIA live regions.
+- Admin composer, session cards, and tooltips refined for accessibility, keyboard focus, and RTL alignment.
+
+### Fixed
+- Eliminated stale queues by returning weak ETags and nocache headers on message lists and status polls.
+- Stabilized mobile chat height when virtual keyboards open by syncing layout to the current visualViewport.
+- Guaranteed session counts and badges remain in sync after manual refreshes or long-running queues.
+
 ## [5.9.8] - 2025-11-10
 
 ### Added
