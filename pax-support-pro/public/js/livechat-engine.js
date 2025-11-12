@@ -31,7 +31,7 @@
 
             // Configuration
             this.config = {
-                pollInterval: 2000,        // 2 seconds for real-time feel
+                pollInterval: 1000,        // 1 second polling cadence
                 reconnectDelay: 5000,      // 5 seconds before reconnect attempt
                 sessionTimeout: 86400000,  // 24 hours in milliseconds
                 storageKey: 'pax_livechat_session_v2',
@@ -45,6 +45,7 @@
                 lastMessageId: 0,
                 isPolling: false,
                 pollTimer: null,
+                pollEtag: null,
                 reconnectAttempts: 0,
                 isTyping: false,
                 typingTimer: null
@@ -207,6 +208,7 @@
             this.log('Starting poll loop');
             this.state.isPolling = true;
             this.state.reconnectAttempts = 0;
+            this.state.pollEtag = null;
             this.poll();
         }
 
@@ -251,25 +253,50 @@
             }
 
             try {
-                const url = `${window.paxLiveChat.restUrl}/liveagent/status/poll?session_id=${this.state.sessionId}&last_message_id=${this.state.lastMessageId}`;
-                
-                const response = await fetch(url, {
-                    headers: {
-                        'X-WP-Nonce': window.paxLiveChat.nonce
-                    }
+                const url = new URL(`${window.paxLiveChat.restUrl}/liveagent/status/poll`);
+                url.searchParams.set('session_id', this.state.sessionId);
+                url.searchParams.set('last_message_id', this.state.lastMessageId);
+                url.searchParams.set('_t', Date.now());
+
+                const headers = new Headers({
+                    'X-WP-Nonce': window.paxLiveChat.nonce,
+                    'Cache-Control': 'no-store'
                 });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                if (this.state.pollEtag) {
+                    headers.set('If-None-Match', this.state.pollEtag);
                 }
 
-                const data = await response.json();
+                const response = await fetch(url.toString(), {
+                    headers,
+                    credentials: 'same-origin',
+                    cache: 'no-store'
+                });
 
-                if (data.success) {
-                    this.handlePollResponse(data);
+                if (response.status === 304) {
                     this.state.reconnectAttempts = 0;
+                    const etag304 = response.headers.get('ETag');
+                    if (etag304) {
+                        this.state.pollEtag = etag304;
+                    }
                 } else {
-                    throw new Error(data.message || 'Poll failed');
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    const etag = response.headers.get('ETag');
+                    if (etag) {
+                        this.state.pollEtag = etag;
+                    }
+
+                    if (data.success) {
+                        this.handlePollResponse(data);
+                        this.state.reconnectAttempts = 0;
+                    } else {
+                        throw new Error(data.message || 'Poll failed');
+                    }
                 }
 
             } catch (error) {
@@ -307,6 +334,10 @@
                         this.state.lastMessageId = msg.id;
                     }
                 });
+            }
+
+            if (typeof data.last_message_id !== 'undefined') {
+                this.state.lastMessageId = data.last_message_id;
             }
 
             // Handle typing indicators
@@ -462,6 +493,7 @@
         handleSessionClosed() {
             this.log('Session closed');
             this.stopPolling();
+            this.state.pollEtag = null;
             this.clearSession();
             this.closeChatWindow();
             this.showToast('Chat session ended', 'info');
@@ -667,6 +699,7 @@
             this.state.sessionId = null;
             this.state.status = null;
             this.state.lastMessageId = 0;
+            this.state.pollEtag = null;
 
             try {
                 localStorage.removeItem(this.config.storageKey);
@@ -707,15 +740,507 @@
         }
     }
 
+    class LiveChatUI {
+        constructor(engine) {
+            this.engine = engine;
+            this.state = {
+                panelOpen: false,
+                waiting: false,
+                hasUnread: false,
+                intentOpen: false
+            };
+            this.typingTimer = null;
+            this.typingActive = false;
+            this.viewportRaf = null;
+            this.closedMessagePlaced = false;
+
+            this.build();
+            this.attachEngineUI();
+            this.bindEvents();
+            this.bindEngineEvents();
+            this.updateViewportHeight();
+
+            const status = engine.state.status || 'closed';
+            if (status === 'active') {
+                this.updateStatus(window.paxLiveChat.strings.online || 'Online', 'online');
+                this.refreshComposerState('active');
+            } else if (status === 'pending') {
+                this.updateStatus(window.paxLiveChat.strings.connecting || 'Connecting…', 'connecting');
+                this.refreshComposerState('pending');
+            } else {
+                this.updateStatus(window.paxLiveChat.strings.offline || 'Offline', 'offline');
+                this.refreshComposerState('closed');
+            }
+        }
+
+        build() {
+            const position = window.paxLiveChat.buttonPosition || 'bottom-right';
+            this.root = document.createElement('div');
+            this.root.className = `pax-livechat-root pax-position-${position}`;
+            document.body.appendChild(this.root);
+
+            this.launcher = document.createElement('button');
+            this.launcher.type = 'button';
+            this.launcher.className = 'pax-livechat-launcher';
+            this.launcher.setAttribute('aria-label', window.paxLiveChat.strings.liveAgent || 'Live Agent');
+            this.launcher.innerHTML = `
+                <span class="pax-launcher-sheen"></span>
+                <span class="pax-launcher-icon" aria-hidden="true">
+                    <span class="dashicons dashicons-format-chat"></span>
+                </span>
+                <span class="pax-launcher-label">${window.paxLiveChat.strings.liveAgent || 'Live Agent'}</span>
+                <span class="pax-launcher-badge" hidden></span>
+            `;
+            this.root.appendChild(this.launcher);
+
+            this.panel = document.createElement('section');
+            this.panel.className = 'pax-livechat-panel';
+            this.panel.hidden = true;
+            this.panel.setAttribute('aria-hidden', 'true');
+            this.panel.setAttribute('role', 'dialog');
+            this.panel.setAttribute('aria-label', window.paxLiveChat.strings.liveAgent || 'Live Agent');
+            this.root.appendChild(this.panel);
+
+            const header = document.createElement('header');
+            header.className = 'pax-livechat-header';
+            header.innerHTML = `
+                <div class="pax-agent-block">
+                    <div class="pax-agent-avatar" aria-hidden="true">
+                        <span class="dashicons dashicons-sos"></span>
+                    </div>
+                    <div class="pax-agent-meta">
+                        <span class="pax-agent-name">${window.paxLiveChat.strings.liveAgent || 'Live Agent'}</span>
+                        <span class="pax-agent-status pax-agent-status--offline">${window.paxLiveChat.strings.offline || 'Offline'}</span>
+                    </div>
+                </div>
+                <div class="pax-header-actions">
+                    <button type="button" class="pax-panel-close" aria-label="${window.paxLiveChat.strings.close || 'Close'}">
+                        <span class="dashicons dashicons-no-alt"></span>
+                    </button>
+                </div>
+            `;
+            this.panel.appendChild(header);
+
+            this.statusIndicator = header.querySelector('.pax-agent-status');
+            this.closeButton = header.querySelector('.pax-panel-close');
+
+            const body = document.createElement('div');
+            body.className = 'pax-livechat-body';
+            this.panel.appendChild(body);
+
+            this.messagesWrapper = document.createElement('div');
+            this.messagesWrapper.className = 'pax-livechat-messages chat-messages';
+            this.messagesWrapper.setAttribute('role', 'log');
+            this.messagesWrapper.setAttribute('aria-live', 'polite');
+            body.appendChild(this.messagesWrapper);
+
+            this.emptyState = document.createElement('div');
+            this.emptyState.className = 'pax-livechat-empty';
+            this.emptyState.innerHTML = `
+                <span class="dashicons dashicons-format-status"></span>
+                <p>${window.paxLiveChat.strings.startConversation || 'Start the conversation by sending a message.'}</p>
+            `;
+            this.messagesWrapper.appendChild(this.emptyState);
+
+            this.waitingOverlay = document.createElement('div');
+            this.waitingOverlay.className = 'pax-livechat-overlay pax-livechat-overlay--waiting';
+            this.waitingOverlay.innerHTML = `
+                <div class="pax-spinner" aria-hidden="true"></div>
+                <p>${window.paxLiveChat.strings.connectingAgent || 'Connecting you to an agent…'}</p>
+            `;
+            this.waitingOverlay.setAttribute('hidden', 'hidden');
+            body.appendChild(this.waitingOverlay);
+
+            const footer = document.createElement('footer');
+            footer.className = 'pax-livechat-footer';
+            this.panel.appendChild(footer);
+
+            this.form = document.createElement('form');
+            this.form.className = 'pax-livechat-composer';
+            footer.appendChild(this.form);
+
+            this.input = document.createElement('textarea');
+            this.input.className = 'pax-livechat-input';
+            this.input.rows = 1;
+            this.input.placeholder = window.paxLiveChat.strings.typeMessage || 'Type your message…';
+            this.input.autocomplete = 'off';
+            this.input.setAttribute('aria-label', this.input.placeholder);
+            this.form.appendChild(this.input);
+
+            this.sendButton = document.createElement('button');
+            this.sendButton.type = 'submit';
+            this.sendButton.className = 'pax-send-button';
+            this.sendButton.innerHTML = `<span class="dashicons dashicons-arrow-right-alt2"></span>`;
+            this.form.appendChild(this.sendButton);
+
+            this.endSessionButton = document.createElement('button');
+            this.endSessionButton.type = 'button';
+            this.endSessionButton.className = 'pax-end-session';
+            this.endSessionButton.textContent = window.paxLiveChat.strings.endSession || 'End Session';
+            footer.appendChild(this.endSessionButton);
+
+            this.toastContainer = document.createElement('div');
+            this.toastContainer.className = 'pax-livechat-toast-container';
+            document.body.appendChild(this.toastContainer);
+        }
+
+        attachEngineUI() {
+            this.engine.ui.chatWindow = this.panel;
+            this.engine.ui.messagesContainer = this.messagesWrapper;
+            this.engine.ui.inputField = this.input;
+            this.engine.ui.statusIndicator = this.statusIndicator;
+        }
+
+        bindEvents() {
+            this.launcher.addEventListener('click', () => {
+                if (!this.state.panelOpen) {
+                    this.openPanel({ intent: true });
+                } else {
+                    this.closePanel({ silent: true });
+                }
+            });
+
+            this.closeButton.addEventListener('click', () => {
+                this.closePanel();
+            });
+
+            this.form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const value = this.input.value.trim();
+                if (!value) {
+                    return;
+                }
+                this.engine.sendMessage(value);
+                this.setEmptyState(false);
+            });
+
+            this.input.addEventListener('input', () => {
+                this.autoResizeInput();
+                this.handleTypingInput();
+            });
+
+            this.input.addEventListener('focus', () => {
+                this.root.classList.add('pax-livechat-keyboard');
+                this.engine.scrollToBottom();
+            });
+
+            this.input.addEventListener('blur', () => {
+                this.root.classList.remove('pax-livechat-keyboard');
+                this.sendTyping(false);
+            });
+
+            this.endSessionButton.addEventListener('click', () => {
+                const confirmText = window.paxLiveChat.strings.confirmEnd || 'End this chat session?';
+                if (window.confirm(confirmText)) {
+                    this.engine.close();
+                }
+            });
+
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => this.updateViewportHeight(), { passive: true });
+            }
+            window.addEventListener('resize', () => this.updateViewportHeight());
+        }
+
+        bindEngineEvents() {
+            document.addEventListener('pax-livechat-state', (event) => this.handleStateEvent(event));
+            document.addEventListener('pax-livechat-message', (event) => this.handleMessageEvent(event));
+            document.addEventListener('pax-livechat-toast', (event) => this.handleToastEvent(event));
+            document.addEventListener('pax-livechat-login-required', (event) => this.handleLoginRequired(event));
+        }
+
+        openPanel({ intent = false } = {}) {
+            this.attachEngineUI();
+            this.panel.hidden = false;
+            this.panel.setAttribute('aria-hidden', 'false');
+            this.root.classList.add('pax-livechat-open');
+            this.state.panelOpen = true;
+            if (intent) {
+                this.state.intentOpen = true;
+                this.engine.open();
+            }
+            this.updateLauncherBadge(false);
+            this.autoResizeInput();
+            setTimeout(() => this.input.focus(), 50);
+            this.engine.scrollToBottom();
+        }
+
+        closePanel({ silent = false } = {}) {
+            this.panel.hidden = true;
+            this.panel.setAttribute('aria-hidden', 'true');
+            this.root.classList.remove('pax-livechat-open');
+            this.state.panelOpen = false;
+            this.sendTyping(false);
+            if (!silent) {
+                this.state.intentOpen = false;
+            }
+        }
+
+        ensurePanelVisible() {
+            if (!this.state.panelOpen) {
+                if (!this.state.intentOpen) {
+                    this.state.intentOpen = true;
+                }
+                this.openPanel();
+            }
+        }
+
+        setWaiting(show) {
+            this.state.waiting = show;
+            if (show) {
+                this.waitingOverlay.removeAttribute('hidden');
+                this.setComposerEnabled(false, window.paxLiveChat.strings.connecting || 'Connecting…');
+            } else {
+                this.waitingOverlay.setAttribute('hidden', 'hidden');
+                this.refreshComposerState(this.engine.state.status || 'closed');
+            }
+        }
+
+        refreshComposerState(status) {
+            let placeholder;
+            if (status === 'active') {
+                placeholder = window.paxLiveChat.strings.typeMessage || 'Type your message…';
+            } else if (status === 'pending') {
+                placeholder = window.paxLiveChat.strings.connectingAgent || 'Waiting for an agent…';
+            } else {
+                placeholder = window.paxLiveChat.strings.sessionEnded || 'Chat session ended.';
+            }
+            const enabled = status === 'active';
+            this.setComposerEnabled(enabled, placeholder);
+        }
+
+        setComposerEnabled(enabled, placeholder) {
+            if (typeof placeholder === 'string') {
+                this.input.placeholder = placeholder;
+            }
+            this.input.disabled = !enabled;
+            this.sendButton.disabled = !enabled;
+            this.endSessionButton.hidden = !enabled;
+            this.autoResizeInput();
+        }
+
+        updateStatus(label, variant = 'offline') {
+            this.statusIndicator.textContent = label;
+            this.statusIndicator.className = `pax-agent-status pax-agent-status--${variant}`;
+        }
+
+        setEmptyState(show) {
+            if (show) {
+                this.emptyState.removeAttribute('hidden');
+            } else {
+                this.emptyState.setAttribute('hidden', 'hidden');
+            }
+        }
+
+        handleStateEvent(event) {
+            const detail = event.detail || {};
+            const state = detail.state;
+            if (state === 'waiting') {
+                this.closedMessagePlaced = false;
+                this.ensurePanelVisible();
+                this.updateStatus(window.paxLiveChat.strings.connecting || 'Connecting…', 'connecting');
+                this.setWaiting(true);
+            } else if (state === 'active') {
+                this.closedMessagePlaced = false;
+                if (this.state.intentOpen) {
+                    this.openPanel();
+                }
+                this.updateStatus(window.paxLiveChat.strings.online || 'Online', 'online');
+                this.setWaiting(false);
+                this.refreshComposerState('active');
+                this.setEmptyState(!this.messagesWrapper.querySelector('.chat-message'));
+                this.updateLauncherBadge(false);
+            } else if (state === 'closed') {
+                this.state.intentOpen = false;
+                this.updateStatus(window.paxLiveChat.strings.offline || 'Offline', 'offline');
+                this.setWaiting(false);
+                this.refreshComposerState('closed');
+                if (!this.closedMessagePlaced) {
+                    this.appendSystemMessage(window.paxLiveChat.strings.sessionEnded || 'Chat session ended.');
+                    this.closedMessagePlaced = true;
+                }
+                this.updateLauncherBadge(false);
+            }
+            this.attachEngineUI();
+        }
+
+        handleMessageEvent(event) {
+            const detail = event.detail || {};
+            const message = detail.message;
+            if (!message) {
+                return;
+            }
+            this.setEmptyState(false);
+            if (message.sender === 'agent' && !this.state.panelOpen) {
+                this.updateLauncherBadge(true);
+            }
+        }
+
+        handleToastEvent(event) {
+            const detail = event.detail || {};
+            if (detail.message) {
+                this.showToast(detail.message, detail.type);
+            }
+        }
+
+        handleLoginRequired(event) {
+            const detail = event.detail || {};
+            this.showLoginModal(detail);
+        }
+
+        appendSystemMessage(text) {
+            if (!text) {
+                return;
+            }
+            const wrapper = document.createElement('div');
+            wrapper.className = 'chat-message message-system';
+            const bubble = document.createElement('div');
+            bubble.className = 'message-content';
+            bubble.textContent = text;
+            wrapper.appendChild(bubble);
+            this.messagesWrapper.appendChild(wrapper);
+            this.engine.scrollToBottom();
+        }
+
+        updateLauncherBadge(show) {
+            this.state.hasUnread = show;
+            const badge = this.launcher.querySelector('.pax-launcher-badge');
+            if (show) {
+                this.launcher.classList.add('pax-livechat-launcher--notify');
+                badge.removeAttribute('hidden');
+                badge.textContent = '●';
+            } else {
+                this.launcher.classList.remove('pax-livechat-launcher--notify');
+                badge.setAttribute('hidden', 'hidden');
+                badge.textContent = '';
+            }
+        }
+
+        showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `pax-livechat-toast pax-livechat-toast--${type || 'info'}`;
+            toast.textContent = message;
+            this.toastContainer.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 200);
+            }, 4000);
+        }
+
+        showLoginModal(detail) {
+            if (this.loginOverlay) {
+                return;
+            }
+            const loginUrl = (detail && detail.loginUrl) || window.paxLiveChat.loginUrl || '#';
+            this.loginOverlay = document.createElement('div');
+            this.loginOverlay.className = 'pax-livechat-login';
+            this.loginOverlay.innerHTML = `
+                <div class="pax-login-dialog" role="dialog" aria-modal="true">
+                    <header>
+                        <h3>${window.paxLiveChat.strings.loginRequired || 'Login Required'}</h3>
+                        <button type="button" class="pax-login-close" aria-label="${window.paxLiveChat.strings.close || 'Close'}">
+                            <span class="dashicons dashicons-no-alt"></span>
+                        </button>
+                    </header>
+                    <p>${window.paxLiveChat.strings.loginMessage || 'Please log in to start a live chat with our support team.'}</p>
+                    <div class="pax-login-actions">
+                        <a class="pax-primary" href="${loginUrl}">${window.paxLiveChat.strings.login || 'Log In'}</a>
+                        <button type="button" class="pax-secondary pax-login-close">${window.paxLiveChat.strings.cancel || 'Cancel'}</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(this.loginOverlay);
+            this.loginOverlay.addEventListener('click', (event) => {
+                if (event.target === this.loginOverlay || event.target.classList.contains('pax-login-close')) {
+                    this.hideLoginModal();
+                }
+            });
+        }
+
+        hideLoginModal() {
+            if (!this.loginOverlay) {
+                return;
+            }
+            this.loginOverlay.remove();
+            this.loginOverlay = null;
+        }
+
+        updateViewportHeight() {
+            if (this.viewportRaf) {
+                cancelAnimationFrame(this.viewportRaf);
+            }
+            this.viewportRaf = requestAnimationFrame(() => {
+                const viewport = window.visualViewport;
+                const height = viewport ? viewport.height : window.innerHeight;
+                document.documentElement.style.setProperty('--pax-livechat-vvh', `${Math.round(height)}px`);
+            });
+        }
+
+        autoResizeInput() {
+            this.input.style.height = 'auto';
+            this.input.style.height = `${Math.min(this.input.scrollHeight, 160)}px`;
+        }
+
+        handleTypingInput() {
+            if (!this.engine.state.sessionId || this.input.disabled) {
+                return;
+            }
+            if (!this.typingActive) {
+                this.sendTyping(true);
+                this.typingActive = true;
+            }
+            if (this.typingTimer) {
+                clearTimeout(this.typingTimer);
+            }
+            this.typingTimer = setTimeout(() => {
+                this.typingActive = false;
+                this.sendTyping(false);
+            }, 2500);
+        }
+
+        async sendTyping(isTyping) {
+            if (!this.engine.state.sessionId) {
+                return;
+            }
+            try {
+                await fetch(`${window.paxLiveChat.restUrl}/liveagent/status/typing`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WP-Nonce': window.paxLiveChat.nonce,
+                        'Cache-Control': 'no-store'
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({
+                        session_id: this.engine.state.sessionId,
+                        is_typing: !!isTyping,
+                        sender: 'user'
+                    })
+                });
+            } catch (error) {
+                // Typing errors are non-critical
+            }
+        }
+    }
+
+    const bootstrapLiveChat = async () => {
+        const engine = new LiveChatEngine();
+        const initialised = await engine.init();
+        if (initialised === false) {
+            return;
+        }
+        const ui = new LiveChatUI(engine);
+        window.paxLiveChatOpen = () => ui.openPanel({ intent: true });
+        window.paxLiveChatClose = () => ui.closePanel({ silent: true });
+        window.paxLiveChatUI = ui;
+    };
+
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            const engine = new LiveChatEngine();
-            engine.init();
-        });
+        document.addEventListener('DOMContentLoaded', bootstrapLiveChat);
     } else {
-        const engine = new LiveChatEngine();
-        engine.init();
+        bootstrapLiveChat();
     }
 
 })();

@@ -52,6 +52,10 @@
                     sessions: null,
                     messages: null
                 },
+                etags: {
+                    sessions: null,
+                    messages: {}
+                },
                 typingTimeout: null,
                 isSending: false,
                 audioEnabled: document.querySelector('.pax-liveagent-app')?.dataset.soundEnabled === '1'
@@ -63,7 +67,6 @@
             this.focusTarget = null;
             this.sessionPoll = null;
             this.messageStreamTimer = null;
-            this.messageStreamController = null;
 
             this.init();
         }
@@ -99,6 +102,11 @@
             this.elements.counters = {
                 pending: document.querySelector('[data-counter="pending"]'),
                 active: document.querySelector('[data-counter="active"]')
+            };
+            this.elements.skeletons = {
+                sessions: document.querySelector('[data-skeleton="sessions"]'),
+                messages: document.querySelector('[data-skeleton="messages"]'),
+                insights: document.querySelector('[data-skeleton="insights"]')
             };
             this.elements.emptyState = document.getElementById('pax-liveagent-empty');
             this.elements.panel = document.getElementById('pax-liveagent-panel');
@@ -204,6 +212,21 @@
             }
         }
 
+        toggleSkeleton(type, show) {
+            if (!this.elements.skeletons) {
+                return;
+            }
+            const target = this.elements.skeletons[type];
+            if (!target) {
+                return;
+            }
+            if (show) {
+                target.removeAttribute('hidden');
+            } else {
+                target.setAttribute('hidden', 'hidden');
+            }
+        }
+
         switchTab(tab) {
             if (this.state.selectedTab === tab) {
                 return;
@@ -247,8 +270,8 @@
                 if (!this.state.selectedSessionId) {
                     return;
                 }
-                await this.fetchMessages(true, 25);
-                this.messageStreamTimer = window.setTimeout(loop, 60);
+                await this.fetchMessages(true);
+                this.messageStreamTimer = window.setTimeout(loop, 1000);
             };
             loop();
         }
@@ -257,14 +280,6 @@
             if (this.messageStreamTimer) {
                 clearTimeout(this.messageStreamTimer);
                 this.messageStreamTimer = null;
-            }
-            if (this.messageStreamController) {
-                try {
-                    this.messageStreamController.abort();
-                } catch (error) {
-                    // ignore abort errors
-                }
-                this.messageStreamController = null;
             }
         }
 
@@ -295,6 +310,7 @@
                 }
 
                 this.updateSessionLists();
+                this.toggleSkeleton('sessions', false);
 
                 if (initial && this.state.sessions.pending.length) {
                     this.loadSession(this.state.sessions.pending[0].id, 'pending');
@@ -306,6 +322,7 @@
                 }
             } catch (error) {
                 console.error('LiveAgentCenter: failed to fetch sessions', error);
+                this.toggleSkeleton('sessions', false);
             }
         }
 
@@ -593,6 +610,8 @@
         }
 
         renderSessionHeader(session) {
+            this.toggleSkeleton('insights', false);
+
             if (this.elements.customerName) {
                 this.elements.customerName.textContent = session.user_name || this.config.strings?.unknownUser || 'Guest';
             }
@@ -775,7 +794,7 @@
             return button;
         }
 
-        async fetchMessages(incremental = false, wait = 0) {
+        async fetchMessages(incremental = false) {
             const sessionId = this.state.selectedSessionId;
             if (!sessionId) {
                 return;
@@ -789,28 +808,52 @@
                 params.set('after', this.state.lastMessageId);
             }
 
-            if (wait) {
-                params.set('wait', Math.min(25, Math.max(1, wait)));
-            }
-
             const previousUserMessageId = this.lastUserMessageId[sessionId] || null;
 
+            if (!incremental) {
+                this.toggleSkeleton('messages', true);
+                this.toggleSkeleton('insights', true);
+            }
+
             try {
-                const controller = (incremental && wait) ? new AbortController() : null;
-                if (controller) {
-                    this.messageStreamController = controller;
+                if (!this.state.etags.messages) {
+                    this.state.etags.messages = {};
                 }
 
-                const response = await this.request(`${REST_ROUTES.messages}?${params.toString()}`, {
+                const headers = new Headers(HEADERS(false));
+                headers.delete('Content-Type');
+
+                const etag = this.state.etags.messages[sessionId];
+                if (etag) {
+                    headers.set('If-None-Match', etag);
+                }
+
+                const fetchResponse = await fetch(`${REST_ROUTES.messages}?${params.toString()}`, {
                     method: 'GET',
-                    signal: controller ? controller.signal : undefined
+                    headers,
+                    credentials: 'same-origin',
+                    cache: 'no-store'
                 });
 
-                if (!response.success) {
+                if (fetchResponse.status === 304) {
                     return;
                 }
 
+                if (!fetchResponse.ok) {
+                    throw new Error(`HTTP ${fetchResponse.status}`);
+                }
+
+                const response = await fetchResponse.json();
+
+                const responseEtag = fetchResponse.headers.get('ETag');
+                if (responseEtag) {
+                    this.state.etags.messages[sessionId] = responseEtag;
+                }
+
                 if (response.session) {
+                    if (response.session.status && response.session.status !== this.state.selectedSessionStatus) {
+                        this.state.selectedSessionStatus = response.session.status;
+                    }
                     this.renderSessionHeader(response.session);
                 }
 
@@ -831,14 +874,18 @@
                     }
                 } else if (messages.length) {
                     this.renderMessages(messages, false);
-                    if (latestUserMessageId && latestUserMessageId !== previousUserMessageId && response.session?.status === 'active') {
+                    if (
+                        latestUserMessageId
+                        && latestUserMessageId !== previousUserMessageId
+                        && (response.session?.status === 'active' || this.state.selectedSessionStatus === 'active')
+                    ) {
                         this.lastUserMessageId[sessionId] = latestUserMessageId;
                         this.notifyNewMessage();
                         this.markMessagesRead();
                     }
                 }
 
-                if (response.last_id) {
+                if (typeof response.last_id !== 'undefined') {
                     this.state.lastMessageId = response.last_id;
                 } else if (response.messages && response.messages.length) {
                     const last = response.messages[response.messages.length - 1];
@@ -860,13 +907,11 @@
                     this.scrollToBottom(true);
                 }
             } catch (error) {
-                if (error?.name === 'AbortError') {
-                    return;
-                }
                 console.error('LiveAgentCenter: failed to fetch messages', error);
             } finally {
-                if (controller && this.messageStreamController === controller) {
-                    this.messageStreamController = null;
+                if (!incremental) {
+                    this.toggleSkeleton('messages', false);
+                    this.toggleSkeleton('insights', false);
                 }
             }
         }

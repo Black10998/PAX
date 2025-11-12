@@ -80,15 +80,22 @@ function pax_sup_rest_poll_updates( $request ) {
         return new WP_Error( 'not_found', __( 'Session not found', 'pax-support-pro' ), array( 'status' => 404 ) );
     }
 
-    $has_updates = false;
+    $has_updates  = false;
     $new_messages = array();
+    $latest_id    = (int) $last_message_id;
 
     // Check for new messages by ID (more reliable than timestamp)
     if ( ! empty( $session['messages'] ) && is_array( $session['messages'] ) ) {
         foreach ( $session['messages'] as $message ) {
-            if ( isset( $message['id'] ) && $message['id'] > $last_message_id ) {
-                $new_messages[] = $message;
-                $has_updates = true;
+            if ( isset( $message['id'] ) ) {
+                $message_id = (int) $message['id'];
+                if ( $message_id > $latest_id ) {
+                    $latest_id = $message_id;
+                }
+                if ( $message_id > $last_message_id ) {
+                    $new_messages[] = $message;
+                    $has_updates    = true;
+                }
             }
         }
     }
@@ -102,7 +109,34 @@ function pax_sup_rest_poll_updates( $request ) {
         $has_updates = true;
     }
 
-    $response = array(
+    $etag_seed = implode(
+        '|',
+        array(
+            $session_id,
+            $session['status'],
+            $session['last_activity'],
+            $latest_id,
+            $agent_typing ? '1' : '0',
+            $user_typing ? '1' : '0',
+        )
+    );
+    $etag = '"' . hash( 'sha256', $etag_seed ) . '"';
+
+    $client_etag = trim( (string) $request->get_header( 'If-None-Match' ) );
+    if (
+        $client_etag
+        && $client_etag === $etag
+        && empty( $new_messages )
+        && ! $agent_typing
+        && ! $user_typing
+        && (int) $last_message_id >= $latest_id
+    ) {
+        $response = new WP_REST_Response( null, 304 );
+        $response->header( 'ETag', $etag );
+        return $response;
+    }
+
+    $response_body = array(
         'success' => true,
         'has_updates' => $has_updates,
         'new_messages' => $new_messages,
@@ -111,6 +145,7 @@ function pax_sup_rest_poll_updates( $request ) {
         'session_status' => $session['status'],
         'last_activity' => $session['last_activity'],
         'server_time' => current_time( 'mysql' ),
+        'last_message_id' => $latest_id,
     );
 
     if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
@@ -121,7 +156,10 @@ function pax_sup_rest_poll_updates( $request ) {
         ) );
     }
 
-    return new WP_REST_Response( $response, 200 );
+    $response = new WP_REST_Response( $response_body, 200 );
+    $response->header( 'ETag', $etag );
+
+    return $response;
 }
 
 /**

@@ -78,8 +78,18 @@ function pax_sup_render_live_agent_center_page() {
             </div>
         </header>
 
-        <section class="pax-liveagent-shell pax-liveagent-layout">
-            <aside class="pax-liveagent-sidebar pax-card pax-sidebar" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
+        <section class="pax-liveagent-shell pax-liveagent-layout" aria-label="<?php esc_attr_e( 'Live agent workspace', 'pax-support-pro' ); ?>">
+            <aside class="pax-liveagent-column pax-queue-column pax-card" aria-label="<?php esc_attr_e( 'Live chat sessions', 'pax-support-pro' ); ?>">
+                <header class="pax-column-header">
+                    <div>
+                        <h2><?php esc_html_e( 'Queue', 'pax-support-pro' ); ?></h2>
+                        <p><?php esc_html_e( 'Monitor pending, active, and recently closed conversations.', 'pax-support-pro' ); ?></p>
+                    </div>
+                    <button type="button" class="pax-help-icon" data-tooltip="<?php esc_attr_e( 'Sessions update automatically every second. Hover a card to preview metadata.', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'About the queue', 'pax-support-pro' ); ?>">
+                        <span class="dashicons dashicons-info-outline"></span>
+                    </button>
+                </header>
+
                 <nav class="pax-session-tabs" role="tablist">
                     <button type="button" class="pax-tab-button active" data-tab="pending" aria-selected="true">
                         <span class="pax-tab-icon" aria-hidden="true">🕓</span>
@@ -96,6 +106,18 @@ function pax_sup_render_live_agent_center_page() {
                         <span><?php esc_html_e( 'Recent', 'pax-support-pro' ); ?></span>
                     </button>
                 </nav>
+
+                <div class="pax-skeleton-stack" data-skeleton="sessions" aria-hidden="true">
+                    <?php for ( $i = 0; $i < 4; $i++ ) : ?>
+                        <div class="pax-skeleton-card">
+                            <span class="pax-skeleton-avatar"></span>
+                            <div class="pax-skeleton-lines">
+                                <span class="pax-skeleton-line pax-skeleton-line--primary"></span>
+                                <span class="pax-skeleton-line pax-skeleton-line--secondary"></span>
+                            </div>
+                        </div>
+                    <?php endfor; ?>
+                </div>
 
                 <div class="pax-session-scroll">
                     <div class="pax-session-list active" data-list="pending" role="tabpanel" aria-label="<?php esc_attr_e( 'Pending chat requests', 'pax-support-pro' ); ?>">
@@ -119,7 +141,23 @@ function pax_sup_render_live_agent_center_page() {
                 </div>
             </aside>
 
-            <main class="pax-liveagent-workspace">
+            <div class="pax-liveagent-column pax-stage-column">
+                <header class="pax-column-header">
+                    <div>
+                        <h2><?php esc_html_e( 'Conversation', 'pax-support-pro' ); ?></h2>
+                        <p><?php esc_html_e( 'Reply in real time, add attachments, and hand off when needed.', 'pax-support-pro' ); ?></p>
+                    </div>
+                    <button type="button" class="pax-help-icon" data-tooltip="<?php esc_attr_e( 'Composer unlocks once you accept a session. Message delivery and read receipts update automatically.', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'About the conversation panel', 'pax-support-pro' ); ?>">
+                        <span class="dashicons dashicons-editor-help"></span>
+                    </button>
+                </header>
+
+                <div class="pax-chat-skeleton" data-skeleton="messages" aria-hidden="true">
+                    <?php for ( $i = 0; $i < 5; $i++ ) : ?>
+                        <div class="pax-skeleton-bubble <?php echo 0 === $i % 2 ? 'pax-skeleton-bubble--right' : ''; ?>"></div>
+                    <?php endfor; ?>
+                </div>
+
                 <div class="pax-chat-placeholder" id="pax-liveagent-empty">
                     <div class="pax-placeholder-illustration" aria-hidden="true">
                         <span>💬</span>
@@ -177,47 +215,69 @@ function pax_sup_render_live_agent_center_page() {
                                 </button>
                             </div>
                         </div>
-
-                        <aside class="pax-chat-details">
-                            <div class="pax-card pax-details-card">
-                                <h3><?php esc_html_e( 'Visitor Info', 'pax-support-pro' ); ?></h3>
-                                <dl class="pax-detail-list">
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Email', 'pax-support-pro' ); ?></dt>
-                                        <dd id="pax-liveagent-detail-email">—</dd>
-                                    </div>
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Domain', 'pax-support-pro' ); ?></dt>
-                                        <dd id="pax-liveagent-detail-domain">—</dd>
-                                    </div>
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Auth Plugin', 'pax-support-pro' ); ?></dt>
-                                        <dd id="pax-liveagent-detail-auth">—</dd>
-                                    </div>
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Page', 'pax-support-pro' ); ?></dt>
-                                        <dd><a href="#" id="pax-liveagent-page-url" class="pax-session-link" target="_blank" rel="noopener noreferrer"></a></dd>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            <div class="pax-card pax-details-card">
-                                <h3><?php esc_html_e( 'Timeline', 'pax-support-pro' ); ?></h3>
-                                <dl class="pax-detail-list">
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Started', 'pax-support-pro' ); ?></dt>
-                                        <dd id="pax-liveagent-detail-started">—</dd>
-                                    </div>
-                                    <div class="pax-detail-row">
-                                        <dt><?php esc_html_e( 'Last activity', 'pax-support-pro' ); ?></dt>
-                                        <dd id="pax-liveagent-detail-last">—</dd>
-                                    </div>
-                                </dl>
-                            </div>
-                        </aside>
                     </div>
                 </div>
-            </main>
+            </div>
+
+            <aside class="pax-liveagent-column pax-insights-column" aria-label="<?php esc_attr_e( 'Session insights', 'pax-support-pro' ); ?>">
+                <header class="pax-column-header">
+                    <div>
+                        <h2><?php esc_html_e( 'Insights', 'pax-support-pro' ); ?></h2>
+                        <p><?php esc_html_e( 'Contextual metadata, visitor details, and timeline at a glance.', 'pax-support-pro' ); ?></p>
+                    </div>
+                    <button type="button" class="pax-help-icon" data-tooltip="<?php esc_attr_e( 'Tooltips highlight data freshness as messages arrive. Copy links and emails in one click.', 'pax-support-pro' ); ?>" aria-label="<?php esc_attr_e( 'About insights', 'pax-support-pro' ); ?>">
+                        <span class="dashicons dashicons-lightbulb"></span>
+                    </button>
+                </header>
+
+                <div class="pax-skeleton-stack pax-skeleton-stack--insights" data-skeleton="insights" aria-hidden="true">
+                    <?php for ( $i = 0; $i < 2; $i++ ) : ?>
+                        <div class="pax-skeleton-panel">
+                            <span class="pax-skeleton-line pax-skeleton-line--title"></span>
+                            <span class="pax-skeleton-line"></span>
+                            <span class="pax-skeleton-line pax-skeleton-line--short"></span>
+                        </div>
+                    <?php endfor; ?>
+                </div>
+
+                <div class="pax-insights-body">
+                    <div class="pax-card pax-details-card">
+                        <h3><?php esc_html_e( 'Visitor Info', 'pax-support-pro' ); ?></h3>
+                        <dl class="pax-detail-list">
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Email', 'pax-support-pro' ); ?></dt>
+                                <dd id="pax-liveagent-detail-email">—</dd>
+                            </div>
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Domain', 'pax-support-pro' ); ?></dt>
+                                <dd id="pax-liveagent-detail-domain">—</dd>
+                            </div>
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Auth Plugin', 'pax-support-pro' ); ?></dt>
+                                <dd id="pax-liveagent-detail-auth">—</dd>
+                            </div>
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Page', 'pax-support-pro' ); ?></dt>
+                                <dd><a href="#" id="pax-liveagent-page-url" class="pax-session-link" target="_blank" rel="noopener noreferrer"></a></dd>
+                            </div>
+                        </dl>
+                    </div>
+
+                    <div class="pax-card pax-details-card">
+                        <h3><?php esc_html_e( 'Timeline', 'pax-support-pro' ); ?></h3>
+                        <dl class="pax-detail-list">
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Started', 'pax-support-pro' ); ?></dt>
+                                <dd id="pax-liveagent-detail-started">—</dd>
+                            </div>
+                            <div class="pax-detail-row">
+                                <dt><?php esc_html_e( 'Last activity', 'pax-support-pro' ); ?></dt>
+                                <dd id="pax-liveagent-detail-last">—</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+            </aside>
         </section>
 
         <footer class="pax-liveagent-footer">

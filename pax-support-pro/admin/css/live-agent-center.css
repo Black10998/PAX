@@ -169,8 +169,32 @@
 
 .pax-liveagent-shell {
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.5fr) minmax(260px, 0.9fr);
     gap: 26px;
+    align-items: start;
+}
+
+.pax-liveagent-column {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.pax-queue-column {
+    padding: 20px 0 24px;
+    min-height: 560px;
+}
+
+.pax-stage-column {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.pax-insights-column {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
 }
 
 .pax-liveagent-sidebar {
@@ -184,6 +208,213 @@
     display: flex;
     gap: 10px;
     padding: 0 20px 18px;
+}
+
+.pax-column-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 20px;
+}
+
+.pax-column-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--pax-text);
+}
+
+.pax-column-header p {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--pax-muted);
+    line-height: 1.5;
+}
+
+.pax-help-icon {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    border: 1px solid var(--pax-border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--pax-muted);
+    cursor: help;
+    transition: var(--pax-transition);
+}
+
+.pax-help-icon .dashicons {
+    font-size: 15px;
+    width: 16px;
+    height: 16px;
+}
+
+.pax-help-icon:hover,
+.pax-help-icon:focus-visible {
+    border-color: var(--pax-border-strong);
+    color: var(--pax-text);
+    outline: none;
+}
+
+.pax-help-icon[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    z-index: 10;
+    left: 50%;
+    top: -8px;
+    transform: translate(-50%, -100%);
+    padding: 10px 14px;
+    max-width: 220px;
+    border-radius: 10px;
+    background: rgba(14, 20, 38, 0.95);
+    border: 1px solid var(--pax-border-strong);
+    color: var(--pax-text);
+    font-size: 11px;
+    line-height: 1.45;
+    box-shadow: var(--pax-shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.pax-help-icon[data-tooltip]:hover::after,
+.pax-help-icon[data-tooltip]:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, -120%);
+}
+
+.pax-skeleton-stack {
+    display: grid;
+    gap: 14px;
+    padding: 0 20px 6px;
+}
+
+.pax-skeleton-stack--insights {
+    padding: 0;
+}
+
+.pax-skeleton-card,
+.pax-skeleton-panel,
+.pax-skeleton-bubble {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--pax-radius);
+    background: rgba(16, 22, 40, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pax-skeleton-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+}
+
+.pax-skeleton-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.pax-skeleton-lines {
+    flex: 1;
+    display: grid;
+    gap: 6px;
+}
+
+.pax-skeleton-line {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.pax-skeleton-line--primary {
+    width: 70%;
+}
+
+.pax-skeleton-line--secondary {
+    width: 45%;
+}
+
+.pax-skeleton-line--title {
+    width: 55%;
+    height: 12px;
+}
+
+.pax-skeleton-line--short {
+    width: 35%;
+}
+
+.pax-skeleton-panel {
+    padding: 18px 20px;
+    display: grid;
+    gap: 10px;
+}
+
+.pax-skeleton-bubble {
+    height: 16px;
+    border-radius: 999px;
+    margin: 0 48px;
+}
+
+.pax-skeleton-bubble--right {
+    margin-left: auto;
+}
+
+.pax-skeleton-card::after,
+.pax-skeleton-panel::after,
+.pax-skeleton-bubble::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.18) 50%, rgba(255, 255, 255, 0) 100%);
+    transform: translateX(-100%);
+    animation: pax-skeleton-shimmer 1.9s infinite;
+    opacity: 0.9;
+}
+
+@keyframes pax-skeleton-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.pax-skeleton-stack[hidden],
+.pax-chat-skeleton[hidden] {
+    display: none !important;
+}
+
+.pax-chat-skeleton {
+    display: grid;
+    gap: 14px;
+    padding: 0 20px 8px;
+}
+
+.pax-chat-skeleton .pax-skeleton-bubble {
+    margin-left: 20px;
+    margin-right: 20px;
+    height: 18px;
+}
+
+.pax-queue-column .pax-session-scroll {
+    margin-top: 6px;
+}
+
+.pax-stage-column .pax-chat-placeholder,
+.pax-stage-column .pax-chat-panel {
+    margin: 0 20px;
+}
+
+.pax-insights-body {
+    display: grid;
+    gap: 18px;
 }
 
 .pax-tab-button {
@@ -454,8 +685,8 @@
 }
 
 .pax-chat-panel-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
+    display: flex;
+    flex-direction: column;
     gap: 24px;
     padding: 24px;
 }
@@ -671,19 +902,19 @@
 }
 
 @media (max-width: 640px) {
-    .pax-liveagent-layout {
+    .pax-liveagent-shell {
         grid-template-columns: 1fr !important;
     }
 
-    .pax-session-list,
-    .pax-convo,
-    .pax-sidebar {
+    .pax-queue-column,
+    .pax-stage-column,
+    .pax-insights-column {
         min-height: auto;
     }
 }
 
 @media (max-width: 960px) {
-    .pax-liveagent-layout {
+    .pax-liveagent-shell {
         grid-template-columns: 1fr !important;
     }
 }
@@ -693,21 +924,22 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .pax-liveagent-sidebar {
+    .pax-stage-column {
+        order: 1;
+    }
+
+    .pax-queue-column {
         order: 2;
     }
 
-    .pax-chat-panel-body {
-        grid-template-columns: minmax(0, 1fr);
+    .pax-insights-column {
+        order: 3;
     }
 
-    .pax-chat-details {
-        flex-direction: row;
-        flex-wrap: wrap;
-    }
-
-    .pax-chat-details .pax-card {
-        flex: 1 1 260px;
+    .pax-stage-column .pax-chat-panel,
+    .pax-stage-column .pax-chat-placeholder,
+    .pax-stage-column .pax-chat-skeleton {
+        margin: 0;
     }
 }
 
