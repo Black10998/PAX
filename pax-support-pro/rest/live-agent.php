@@ -123,6 +123,8 @@ function pax_live_agent_start( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
+    pax_live_agent_nocache();
+
     $user_meta      = $request->get_param( 'user_meta' ) ?: array();
     $current_user   = wp_get_current_user();
     $has_wp_user    = ( $current_user instanceof WP_User ) && $current_user->exists();
@@ -185,6 +187,7 @@ function pax_live_agent_status( $request ) {
     global $wpdb;
 
     if ( $request->get_param( 'healthcheck' ) ) {
+        pax_live_agent_nocache();
         return rest_ensure_response( array(
             'status'    => 'ok',
             'timestamp' => current_time( 'mysql' ),
@@ -195,6 +198,8 @@ function pax_live_agent_status( $request ) {
     if ( ! $session_id ) {
         return new WP_Error( 'missing_param', 'Session ID required', array( 'status' => 400 ) );
     }
+
+    pax_live_agent_nocache();
 
     $table = $wpdb->prefix . 'pax_liveagent_sessions';
     $session = $wpdb->get_row(
@@ -209,16 +214,15 @@ function pax_live_agent_status( $request ) {
         return new WP_Error( 'not_found', 'Session not found', array( 'status' => 404 ) );
     }
 
-    $status = $session['status'];
-    if ( 'accepted' === $status ) {
-        $status = 'active';
-    }
+    $status = pax_live_agent_normalize_status( $session['status'] );
 
     $response_status = $status;
     if ( 'active' === $status ) {
         $response_status = 'accepted';
     } elseif ( 'closed' === $status ) {
         $response_status = $session['agent_id'] ? 'closed' : 'declined';
+    } elseif ( 'declined' === $session['status'] ) {
+        $response_status = 'declined';
     }
 
     $response = array(
@@ -242,6 +246,8 @@ function pax_live_agent_accept( $request ) {
     if ( ! pax_live_agent_verify_nonce( $request ) ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
+    
+    pax_live_agent_nocache();
     
     $session_id = $request->get_param( 'session_id' );
     if ( ! $session_id ) {
@@ -274,6 +280,8 @@ function pax_live_agent_decline( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
     
+    pax_live_agent_nocache();
+    
     $session_id = $request->get_param( 'session_id' );
     if ( ! $session_id ) {
         return new WP_Error( 'missing_param', 'Session ID required', array( 'status' => 400 ) );
@@ -284,7 +292,7 @@ function pax_live_agent_decline( $request ) {
     $updated = $wpdb->update(
         $table,
         array(
-            'status'        => 'closed',
+            'status'        => 'declined',
             'last_activity' => current_time( 'mysql' ),
             'ended_at'      => current_time( 'mysql' ),
         ),
@@ -314,6 +322,8 @@ function pax_live_agent_message( $request ) {
     if ( ! pax_live_agent_verify_nonce( $request ) ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
+
+    pax_live_agent_nocache();
 
     $session_id     = (int) $request->get_param( 'session_id' );
     $raw_message    = $request->get_param( 'content' );
@@ -354,7 +364,7 @@ function pax_live_agent_message( $request ) {
             return new WP_Error( 'invalid_status', __( 'Session is not active.', 'pax-support-pro' ), array( 'status' => 400 ) );
         }
     } else {
-        if ( 'closed' === $current_status ) {
+        if ( in_array( $current_status, array( 'closed', 'declined' ), true ) ) {
             return new WP_Error( 'invalid_status', __( 'Session is closed.', 'pax-support-pro' ), array( 'status' => 400 ) );
         }
     }
@@ -422,12 +432,19 @@ function pax_live_agent_message( $request ) {
         pax_sup_notify_new_message( $session_id, $new_message, $sender );
     }
 
-    return rest_ensure_response( array(
+    $payload = array(
         'success'    => true,
         'session'    => pax_live_agent_prepare_session_summary( $updated_session ),
         'session_id' => $session_id,
         'message'    => $new_message,
-    ) );
+    );
+
+    if ( $new_message ) {
+        $payload['id']        = isset( $new_message['id'] ) ? (int) $new_message['id'] : ( isset( $new_message['seq'] ) ? (int) $new_message['seq'] : 0 );
+        $payload['timestamp'] = $new_message['timestamp'] ?? $now;
+    }
+
+    return rest_ensure_response( $payload );
 }
 
 function pax_live_agent_messages_stream( $request ) {
@@ -439,50 +456,50 @@ function pax_live_agent_messages_stream( $request ) {
 
     $session_id = (int) $request->get_param( 'session_id' );
     if ( ! $session_id ) {
-        return rest_ensure_response( array( 'success' => false, 'messages' => array() ) );
+        return new WP_Error( 'missing_param', __( 'Session ID required.', 'pax-support-pro' ), array( 'status' => 400 ) );
     }
 
-    $after = (int) $request->get_param( 'after' );
-    $wait  = (int) $request->get_param( 'wait' );
-    if ( $wait <= 0 ) {
-        $wait = 25;
+    $session = pax_sup_get_liveagent_session( $session_id );
+    if ( ! $session ) {
+        return new WP_Error( 'not_found', __( 'Session not found.', 'pax-support-pro' ), array( 'status' => 404 ) );
     }
-    $wait = min( 25, max( 1, $wait ) );
 
-    $start_time = time();
-    $messages   = array();
-    $session    = null;
+    if ( ! pax_live_agent_user_can_access_session( $session ) ) {
+        return new WP_Error( 'forbidden', __( 'You do not have permission to access this session.', 'pax-support-pro' ), array( 'status' => 403 ) );
+    }
 
-    do {
-        $session = pax_sup_get_liveagent_session( $session_id );
+    $after = max( 0, (int) $request->get_param( 'after' ) );
+    $all_messages = isset( $session['messages'] ) && is_array( $session['messages'] ) ? $session['messages'] : array();
+    $normalized   = pax_sup_normalize_liveagent_messages( $all_messages );
 
-        if ( ! $session ) {
-            return new WP_Error( 'not_found', __( 'Session not found.', 'pax-support-pro' ), array( 'status' => 404 ) );
+    $last_seq = 0;
+    foreach ( $normalized as $message ) {
+        $last_seq = max( $last_seq, (int) ( $message['seq'] ?? 0 ) );
+    }
+
+    $etag          = sprintf( 'W/"%d:%d"', $session_id, $last_seq );
+    $if_none_match = trim( (string) $request->get_header( 'If-None-Match' ) );
+    $etag_matches  = array_filter( array_map( 'trim', explode( ',', $if_none_match ) ) );
+
+    $messages = array_filter(
+        $normalized,
+        function( $message ) use ( $after ) {
+            $seq = isset( $message['seq'] ) ? (int) $message['seq'] : 0;
+            return $seq > $after;
         }
+    );
 
-        if ( ! pax_live_agent_user_can_access_session( $session ) ) {
-            return new WP_Error( 'forbidden', __( 'You do not have permission to access this session.', 'pax-support-pro' ), array( 'status' => 403 ) );
-        }
+    if ( ! empty( $etag_matches ) && in_array( $etag, $etag_matches, true ) && empty( $messages ) ) {
+        $response = new WP_REST_Response( null, 304 );
+        $response->set_headers( array(
+            'ETag'          => $etag,
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma'        => 'no-cache',
+        ) );
+        return $response;
+    }
 
-        $all_messages = isset( $session['messages'] ) && is_array( $session['messages'] ) ? $session['messages'] : array();
-        $normalized   = pax_sup_normalize_liveagent_messages( $all_messages );
-
-        $messages = array_filter(
-            $normalized,
-            function( $message ) use ( $after ) {
-                $seq = isset( $message['seq'] ) ? (int) $message['seq'] : 0;
-                return $seq > $after;
-            }
-        );
-
-        if ( ! empty( $messages ) ) {
-            break;
-        }
-
-        usleep( 400000 );
-    } while ( ( time() - $start_time ) < $wait );
-
-    $messages = array_map(
+    $payload_messages = array_map(
         function( $message ) {
             $seq = (int) ( $message['seq'] ?? 0 );
             return array(
@@ -499,18 +516,23 @@ function pax_live_agent_messages_stream( $request ) {
         array_values( $messages )
     );
 
-    $last_id = $after;
-    if ( ! empty( $messages ) ) {
-        $last_id = max( array_column( $messages, 'seq' ) );
-    }
-
-    return rest_ensure_response( array(
+    $response = new WP_REST_Response( array(
         'success'    => true,
-        'messages'   => $messages,
+        'messages'   => $payload_messages,
         'session_id' => $session_id,
-        'status'     => $session['status'],
-        'last_id'    => $last_id,
+        'status'     => pax_live_agent_normalize_status( $session['status'] ?? 'pending' ),
+        'last_id'    => $last_seq,
     ) );
+
+    $response->set_headers( array(
+        'ETag'          => $etag,
+        'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma'        => 'no-cache',
+    ) );
+
+    error_log( sprintf( '[PAX LIVE] list_messages sid=%d after=%d count=%d last=%d', $session_id, $after, count( $payload_messages ), $last_seq ) );
+
+    return $response;
 }
 
 function pax_live_agent_list_sessions( $request ) {
@@ -518,7 +540,7 @@ function pax_live_agent_list_sessions( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
-    nocache_headers();
+    pax_live_agent_nocache();
 
     global $wpdb;
 
@@ -620,6 +642,8 @@ function pax_live_agent_close( $request ) {
         return new WP_Error( 'invalid_nonce', __( 'Security check failed.', 'pax-support-pro' ), array( 'status' => 403 ) );
     }
 
+    pax_live_agent_nocache();
+
     $session_id = (int) $request->get_param( 'session_id' );
     if ( ! $session_id ) {
         return new WP_Error( 'missing_param', __( 'Session ID required.', 'pax-support-pro' ), array( 'status' => 400 ) );
@@ -685,15 +709,20 @@ function pax_live_agent_session_rate( $request ) {
 
     $table = $wpdb->prefix . 'pax_liveagent_sessions';
 
+    $now = current_time( 'mysql' );
+
     $updated = $wpdb->update(
         $table,
         array(
             'rating'       => $score,
             'rating_note'  => $note,
-            'last_activity'=> current_time( 'mysql' ),
+            'rating_stars' => $score,
+            'rating_comment' => $note,
+            'rated_at'     => $now,
+            'last_activity'=> $now,
         ),
         array( 'id' => $session_id ),
-        array( '%d', '%s', '%s' ),
+        array( '%d', '%s', '%d', '%s', '%s', '%s' ),
         array( '%d' )
     );
 
@@ -721,11 +750,23 @@ function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
         $last_message  = end( $temp_messages );
     }
 
+    $status = pax_live_agent_normalize_status( $session['status'] ?? 'pending' );
+    if ( 'closed' === $status && empty( $session['agent_id'] ) ) {
+        $status = 'declined';
+    }
+    if ( isset( $session['status'] ) && 'declined' === $session['status'] ) {
+        $status = 'declined';
+    }
+
+    $rating_stars   = isset( $session['rating_stars'] ) ? (int) $session['rating_stars'] : ( isset( $session['rating'] ) ? (int) $session['rating'] : null );
+    $rating_comment = $session['rating_comment'] ?? ( $session['rating_note'] ?? '' );
+    $rated_at       = $session['rated_at'] ?? '';
+
     return array(
         'id'            => (int) $session['id'],
         'user_id'       => isset( $session['user_id'] ) ? (int) $session['user_id'] : 0,
         'agent_id'      => isset( $session['agent_id'] ) ? (int) $session['agent_id'] : 0,
-        'status'        => pax_live_agent_normalize_status( $session['status'] ?? 'pending' ),
+        'status'        => $status,
         'user_name'     => $session['user_name'] ?? '',
         'user_email'    => $session['user_email'] ?? '',
         'page_url'      => $session['page_url'] ?? '',
@@ -740,6 +781,9 @@ function pax_live_agent_prepare_session_summary( $session, $viewer = 'agent' ) {
         'unread_count'  => pax_live_agent_calculate_unread( $messages, $viewer ),
         'rating'        => isset( $session['rating'] ) ? (int) $session['rating'] : null,
         'rating_note'   => isset( $session['rating_note'] ) ? $session['rating_note'] : '',
+        'rating_stars'  => $rating_stars,
+        'rating_comment'=> $rating_comment,
+        'rated_at'      => $rated_at,
         'avatar'        => function_exists( 'get_avatar' ) ? get_avatar( $session['user_id'] ?? 0, 48 ) : '',
         'last_message'  => $last_message ? array(
             'id'        => $last_message['id'] ?? '',
@@ -781,26 +825,20 @@ function pax_live_agent_verify_nonce( $request ) {
         $nonce = $request->get_header( 'x-wp-nonce' );
     }
 
-    if ( ! $nonce ) {
-        return false;
-    }
-
-    if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+    if ( ! $nonce || ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
         return false;
     }
 
     $route = $request->get_route();
 
-    if ( strpos( $route, '/live/rate' ) !== false ) {
+    // Routes that the public widget can call.
+    if ( preg_match( '#/live/(start|session|message|messages|status|rate)$#', $route ) ) {
         return true;
     }
 
-    if ( preg_match( '#/live/(session|message|close)$#', $route ) ) {
-        return true;
-    }
-
-    if ( strpos( $route, '/live/sessions' ) !== false || strpos( $route, '/live/messages' ) !== false ) {
-        return is_user_logged_in();
+    // Administrative-only routes.
+    if ( preg_match( '#/live/(accept|decline|close|sessions|session/\d+)$#', $route ) ) {
+        return current_user_can( 'manage_options' ) || current_user_can( 'manage_pax_chats' );
     }
 
     return current_user_can( 'manage_options' );

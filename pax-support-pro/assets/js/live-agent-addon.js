@@ -228,13 +228,21 @@ if (typeof PAXUnifiedChat !== 'undefined') {
             const message = customMessage || paxLiveAgentText('connecting', 'Connecting to support…');
             banner.className = 'pax-live-banner pax-live-connecting';
             banner.innerHTML = `${dots}<span>${message}</span>`;
-        } else if (state === 'queue') {
+        } else if (state === 'queue' || state === 'queued') {
             const message = customMessage || paxLiveAgentText('queued', 'You are now in queue, please wait…');
             banner.className = 'pax-live-banner pax-live-queue';
             banner.innerHTML = `${dots}<span>${message}</span>`;
         } else if (state === 'connected') {
             const message = customMessage || paxLiveAgentText('connected', 'Agent connected!');
             banner.className = 'pax-live-banner pax-live-connected';
+            banner.textContent = message;
+        } else if (state === 'offline') {
+            const message = customMessage || paxLiveAgentText('offline', 'You appear to be offline. Messages will be queued.');
+            banner.className = 'pax-live-banner pax-live-offline';
+            banner.textContent = message;
+        } else if (state === 'reconnected') {
+            const message = customMessage || paxLiveAgentText('reconnected', 'Back online — resuming chat.');
+            banner.className = 'pax-live-banner pax-live-reconnected';
             banner.textContent = message;
         } else if (state === 'error') {
             const message = customMessage || paxLiveAgentText('statusError', 'Unable to connect right now. Please try again.');

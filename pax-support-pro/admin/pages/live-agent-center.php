@@ -75,6 +75,11 @@ function pax_sup_render_live_agent_center_page() {
                     <?php esc_html_e( 'Ping REST', 'pax-support-pro' ); ?>
                 </button>
                 <span class="pax-diagnostic-status" id="pax-liveagent-ping-status" aria-live="polite"></span>
+                <button type="button" class="button pax-liveagent-refresh" id="pax-liveagent-refresh">
+                    <span class="dashicons dashicons-update" aria-hidden="true"></span>
+                    <?php esc_html_e( 'Refresh', 'pax-support-pro' ); ?>
+                </button>
+                <span class="screen-reader-text" id="pax-liveagent-refresh-status" aria-live="polite"></span>
             </div>
         </header>
 

@@ -5,6 +5,24 @@ All notable changes to PAX Support Pro will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2025-11-12
+
+### Added
+- Hard Live Agent transport with 1 s polling, `after` cursors, weak ETag/304 handling, offline queueing with heartbeat/backoff, and safe-area aware 100 dvh layout for the public widget.
+- Live Agent Center refresh button with loading state and screen-reader feedback, plus inline “?” tooltips (ARIA tooltips) beside Accept / Decline / End controls.
+- New rating persistence columns (`rating_stars`, `rating_comment`, `rated_at`) and comprehensive diagnostics logging for session create / accept / message / list routes.
+
+### Changed
+- All Live Agent REST endpoints now emit `nocache_headers()`, normalise statuses (explicit `declined`), and capture concise diagnostics without logging PII.
+- Session polling adapts dynamically: pending queues poll every 1 s for the first 60 s then 3 s, idle states remain at 3 s, and message streams keep a 30 s heartbeat.
+- Front-end and admin composers show subtle cooldown states when messages are fired rapidly; hard live mode pauses the assistant UI until an agent connects.
+- Admin layout refined to a responsive three-column grid (Sessions | Conversation | Visitor Info) with RTL-aware ordering, and refreshed glass styles for buttons/chips.
+
+### Fixed
+- Declined sessions now surface in Recent lists and status badges, ensuring agents can review refusal history.
+- Rating endpoint updates legacy (`rating`, `rating_note`) and new fields without breaking existing analytics.
+- Message fetchers gracefully handle empty/unchanged responses via weak ETag 304s, eliminating stale caching artefacts across admin and frontend contexts.
+
 ## [5.9.8] - 2025-11-10
 
 ### Added

@@ -678,18 +678,23 @@
             };
             this.liveConfig = window.PAX_LIVE || {};
             this.livePoll = {
-                controller: null,
                 lastSeq: 0,
+                etag: '',
                 dedupe: new Set(),
-                retryIn: 500,
                 online: ( typeof navigator === 'undefined' ) ? true : navigator.onLine !== false,
             };
+            this.liveQueueLength = 0;
             this.liveReconnectTimer = null;
             this.liveRestBase = null;
             this.replyToMessage = null;
-            this.pollInterval = null;
             this.isPolling = false;
             this.lastMessageId = 0;
+            this.composerCooldownTimer = null;
+            this.liveWidgetBound = false;
+            this.onLiveMessages = this.handleWidgetMessages.bind(this);
+            this.onLiveStatus = this.handleWidgetStatus.bind(this);
+            this.onLiveQueue = this.handleWidgetQueue.bind(this);
+            this.onLiveConnectivity = this.handleWidgetConnectivity.bind(this);
             this.isOpen = false; // Track chat open/close state
             
             // DOM elements
@@ -735,6 +740,16 @@
 
                 window.addEventListener('online', () => this.handleOnline());
                 window.addEventListener('offline', () => this.handleOffline());
+
+                if (window.PAXLiveWidget?.setContainer) {
+                    window.PAXLiveWidget.setContainer(this.chatWindow);
+                }
+
+                if (this.inputField && window.PAXLiveWidget?.setComposer) {
+                    window.PAXLiveWidget.setComposer(this.inputField);
+                }
+
+                this.initLiveWidgetIntegration();
                 
                 paxDebugLog('INIT', 'DOM elements retrieved', {
                     chatWindow: !!this.chatWindow,
@@ -791,6 +806,160 @@
             } catch (error) {
                 paxErrorLog('INIT', error, { method: 'setup' });
             }
+        }
+
+        initLiveWidgetIntegration() {
+            if (!window.PAXLiveWidget || this.liveWidgetBound) {
+                return;
+            }
+
+            window.addEventListener('pax:live-messages', this.onLiveMessages);
+            window.addEventListener('pax:live-status', this.onLiveStatus);
+            window.addEventListener('pax:live-queue', this.onLiveQueue);
+            window.addEventListener('pax:live-connectivity', this.onLiveConnectivity);
+            this.liveWidgetBound = true;
+        }
+
+        handleWidgetMessages(event) {
+            const detail = event?.detail || {};
+            if (!detail.sessionId || detail.sessionId !== this.sessions.liveagent.sessionId) {
+                return;
+            }
+
+            if (typeof detail.lastId === 'number') {
+                this.livePoll.lastSeq = detail.lastId;
+            }
+
+            if (Array.isArray(detail.messages) && detail.messages.length) {
+                this.processLiveMessageBatch({
+                    messages: detail.messages,
+                    status: detail.status,
+                    agent: detail.agent,
+                    last_id: detail.lastId,
+                    meta: detail.meta || {},
+                });
+                return;
+            }
+
+            if (detail.status) {
+                const previousStatus = this.sessions.liveagent.status;
+                this.sessions.liveagent.status = detail.status;
+                if (typeof this.handleStatusChange === 'function' && previousStatus !== detail.status) {
+                    this.handleStatusChange(detail.status, detail);
+                }
+                this.saveState();
+            }
+        }
+
+        handleWidgetStatus(event) {
+            const detail = event?.detail || {};
+            if (!detail.sessionId || detail.sessionId !== this.sessions.liveagent.sessionId || !detail.status) {
+                return;
+            }
+            const previousStatus = this.sessions.liveagent.status;
+            this.sessions.liveagent.status = detail.status;
+            if (typeof this.handleStatusChange === 'function' && previousStatus !== detail.status) {
+                this.handleStatusChange(detail.status, detail);
+            } else if (previousStatus !== detail.status) {
+                this.syncLiveAgentStatus();
+            }
+            this.saveState();
+        }
+
+        handleWidgetQueue(event) {
+            const detail = event?.detail || {};
+            if (!detail.sessionId || detail.sessionId !== this.sessions.liveagent.sessionId) {
+                return;
+            }
+
+            this.liveQueueLength = detail.length || 0;
+            this.updateLiveComposerState('queue', this.liveQueueLength > 0);
+
+            if (this.liveQueueLength > 0) {
+                this.showLiveBanner?.('queued', this.getLiveAgentString('queued', 'Queued…'));
+                if (this.sendButton) {
+                    this.sendButton.disabled = true;
+                    this.sendButton.classList.add('button-disabled');
+                }
+            } else if (this.sessions.liveagent.status === 'active') {
+                if (this.sendButton && !this.composerCooldownTimer) {
+                    this.sendButton.disabled = false;
+                    this.sendButton.classList.remove('button-disabled');
+                }
+                this.showLiveBanner?.('connected');
+                this.cooldownComposer(320);
+            }
+        }
+
+        handleWidgetConnectivity(event) {
+            const detail = event?.detail || {};
+            if (typeof detail.online !== 'boolean') {
+                return;
+            }
+
+            this.livePoll.online = detail.online;
+            this.updateLiveComposerState('disabled', !detail.online);
+
+            if (!detail.online) {
+                this.showLiveBanner?.('offline', this.getLiveAgentString('offline', 'You appear to be offline. Messages will be queued.'));
+                return;
+            }
+
+            if (this.sessions.liveagent.status === 'active' && this.liveQueueLength === 0) {
+                this.showLiveBanner?.('reconnected', this.getLiveAgentString('reconnected', 'Back online — resuming chat.'));
+            }
+            this.cooldownComposer(350);
+        }
+
+        updateLiveComposerState(state, active) {
+            if (!this.chatWindow) {
+                return;
+            }
+
+            const composer = this.chatWindow.querySelector('.pax-input-area');
+            if (!composer) {
+                return;
+            }
+
+            if (state === 'queue') {
+                composer.classList.toggle('is-queued', !!active);
+                if (active) {
+                    composer.setAttribute('data-queue-label', this.getLiveAgentString('queued', 'Queued – waiting for connection…'));
+                } else {
+                    composer.removeAttribute('data-queue-label');
+                }
+            }
+
+            if (state === 'disabled') {
+                composer.classList.toggle('is-disabled', !!active);
+            }
+        }
+
+        cooldownComposer(duration = 800) {
+            if (!this.sendButton) {
+                return;
+            }
+
+            if (this.composerCooldownTimer) {
+                clearTimeout(this.composerCooldownTimer);
+            }
+
+            this.sendButton.disabled = true;
+            this.sendButton.classList.add('button-cooldown');
+            const composer = this.chatWindow?.querySelector('.pax-input-area');
+            if (composer) {
+                composer.classList.add('button-cooldown');
+            }
+            this.composerCooldownTimer = window.setTimeout(() => {
+                if (this.sessions.liveagent.status === 'active' && this.liveQueueLength === 0) {
+                    this.sendButton.disabled = false;
+                    this.sendButton.classList.remove('button-cooldown');
+                    if (composer) {
+                        composer.classList.remove('button-cooldown');
+                    }
+                }
+                this.composerCooldownTimer = null;
+            }, duration);
         }
 
         initializeWithAccessControl() {
@@ -2563,9 +2732,7 @@
             if (nonce) {
                 headers['X-WP-Nonce'] = nonce;
             }
-            if (window.PAX_LIVE?.noStore) {
-                headers['Cache-Control'] = 'no-store';
-            }
+            headers['Cache-Control'] = 'no-store';
             return headers;
         }
 
@@ -2740,8 +2907,18 @@
                 this.inputField.disabled = !enabled;
             }
             if (this.sendButton) {
-                this.sendButton.disabled = !enabled;
-                this.sendButton.classList.toggle('button-disabled', !enabled);
+                const shouldDisable = !enabled || this.liveQueueLength > 0;
+                this.sendButton.disabled = shouldDisable;
+                this.sendButton.classList.toggle('button-disabled', shouldDisable);
+                if (enabled && !shouldDisable) {
+                    this.sendButton.classList.remove('button-cooldown');
+                }
+            }
+            if (this.chatWindow) {
+                const composer = this.chatWindow.querySelector('.pax-input-area');
+                if (composer) {
+                    composer.classList.toggle('is-disabled', !enabled);
+                }
             }
         }
 
@@ -2862,9 +3039,55 @@
 
         async sendLiveAgentMessage(message, replyTo) {
             const sessionId = this.sessions.liveagent.sessionId;
-            
             if (!sessionId) {
                 throw new Error('No active Live Agent session');
+            }
+
+            if (window.PAXLiveWidget) {
+                const clientId = `client-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+                const pendingMessage = {
+                    id: Date.now(),
+                    seq: Date.now(),
+                    sender: 'user',
+                    role: 'user',
+                    message,
+                    text: message,
+                    timestamp: new Date().toISOString(),
+                    created_at: new Date().toISOString(),
+                    pending: true,
+                    clientId,
+                };
+
+                if (replyTo) {
+                    pendingMessage.reply_to = replyTo.id;
+                }
+
+                this.sessions.liveagent.messages.push(pendingMessage);
+                this.renderMessages();
+                this.scrollToBottom();
+                this.saveState();
+
+                try {
+                    const result = await window.PAXLiveWidget.sendMessage({
+                        sessionId,
+                        content: message,
+                        replyTo: replyTo ? replyTo.id : null,
+                        clientId,
+                    });
+
+                    if (result?.queued) {
+                        this.handleWidgetQueue({ detail: { sessionId, length: window.PAXLiveWidget.queueLength?.() || 1 } });
+                    } else {
+                        this.cooldownComposer();
+                    }
+                } catch (error) {
+                    console.error('Error sending Live Agent message:', error);
+                    pendingMessage.error = true;
+                    this.renderMessages();
+                    throw error;
+                }
+
+                return;
             }
 
             const response = await fetch(this.buildLiveUrl('live/message'), {
@@ -2889,6 +3112,7 @@
 
             // Message will be reflected in next poll
             this.saveState();
+            this.cooldownComposer();
         }
 
         async ensureLiveAgentSession(force = false) {
@@ -2897,13 +3121,62 @@
             }
 
             try {
+                const currentUser = window.paxSupportPro?.currentUser || {};
+
+                if (window.PAXLiveWidget) {
+                    const sessionPayload = await window.PAXLiveWidget.ensureSession({
+                        force,
+                        userMeta: {
+                            id: currentUser?.id || 0,
+                            name: currentUser?.name || 'Guest',
+                            email: currentUser?.email || ''
+                        },
+                        pageUrl: window.location.href,
+                        userAgent: navigator.userAgent
+                    });
+
+                    const sessionSummary = sessionPayload.session || {};
+                    const sessionId = sessionPayload.id || sessionSummary.id;
+
+                    this.sessions.liveagent.sessionId = sessionId;
+                    this.sessions.liveagent.status = sessionSummary.status || 'pending';
+                    this.sessions.liveagent.userName = sessionSummary.user_name || sessionSummary.userName || this.sessions.liveagent.userName;
+                    this.sessions.liveagent.userEmail = sessionSummary.user_email || sessionSummary.userEmail || this.sessions.liveagent.userEmail;
+                    this.sessions.liveagent.restBase = this.getLiveRestBase();
+                    this.sessions.liveagent.rating = sessionSummary.rating_stars || sessionSummary.rating || null;
+                    this.sessions.liveagent.rating_note = sessionSummary.rating_comment || sessionSummary.rating_note || '';
+                    this.livePoll.lastSeq = 0;
+                    this.livePoll.dedupe.clear();
+                    this.livePoll.online = ( typeof navigator === 'undefined' ) ? true : navigator.onLine !== false;
+                    if (force) {
+                        this.sessions.liveagent.messages = [];
+                    }
+                    this.setComposerEnabled(false);
+                    this.saveState();
+
+                    window.PAXLiveWidget.applyHardMode?.();
+                    window.PAXLiveWidget.start({ sessionId });
+
+                    this.showLiveBanner('queue');
+                    this.renderQuickPromptsBar();
+                    return;
+                }
+            } catch (error) {
+                console.error('Error creating Live Agent session via transport:', error);
+                if (typeof this.showLiveBanner === 'function') {
+                    this.showLiveBanner('error', this.getLiveAgentString('statusError', 'Unable to connect right now. Please try again.'));
+                }
+            }
+
+            // Fallback to direct REST call if widget transport is unavailable.
+            try {
                 try {
                     window.dispatchEvent(new CustomEvent('pax:live-mode-on'));
                     if (window.PAX_ASSISTANT?.pause) {
                         window.PAX_ASSISTANT.pause();
                     }
                 } catch (error) {
-                    // ignore assistant pause errors
+                    // Ignore assistant pause errors in fallback.
                 }
 
                 const endpoint = this.buildLiveUrl('live/session');
@@ -2949,7 +3222,7 @@
                     this.setComposerEnabled(false);
                     this.saveState();
 
-                    console.log('Live Agent session created:', sessionId);
+                    console.log('Live Agent session created (fallback):', sessionId);
 
                     if (typeof this.syncLiveAgentStatus === 'function') {
                         this.syncLiveAgentStatus();
@@ -3053,6 +3326,14 @@
         }
 
         startPolling() {
+            if (window.PAXLiveWidget) {
+                window.PAXLiveWidget.start({ sessionId: this.sessions.liveagent.sessionId });
+                if (this.sessions.liveagent.status === 'active') {
+                    this.cooldownComposer(320);
+                }
+                return;
+            }
+
             if (this.isPolling) {
                 return;
             }
@@ -3061,69 +3342,33 @@
         }
 
         stopPolling() {
+            if (window.PAXLiveWidget) {
+                window.PAXLiveWidget.stop();
+                return;
+            }
+
             this.stopLongPoll();
         }
 
         startLongPoll(force = false) {
-            if (!this.sessions.liveagent.sessionId || this.currentMode !== 'liveagent') {
-                return;
-            }
-
-            if (!this.livePoll.online) {
-                return;
-            }
-
-            if (this.livePoll.controller && !force) {
-                return;
-            }
-
-            this.isPolling = true;
-            this.livePoll.retryIn = 500;
-
-            if (this.livePoll.controller) {
-                try {
-                    this.livePoll.controller.abort();
-                } catch (error) {
-                    // ignore
+            if (window.PAXLiveWidget) {
+                if (force) {
+                    window.PAXLiveWidget.fetchNow();
+                } else {
+                    window.PAXLiveWidget.start({ sessionId: this.sessions.liveagent.sessionId });
                 }
+                return;
             }
 
-            const sessionId = this.sessions.liveagent.sessionId;
-            const params = new URLSearchParams({
-                session_id: sessionId,
-                after: this.livePoll.lastSeq,
-                wait: 25
-            });
-
-            this.livePoll.controller = new AbortController();
-
-            fetch(this.buildLiveUrl(`live/messages?${params.toString()}`), {
-                method: 'GET',
-                headers: this.buildLiveHeaders(),
-                credentials: 'same-origin',
-                cache: 'no-store',
-                signal: this.livePoll.controller.signal
-            })
-                .then((response) => response.json())
-                .then((data) => this.handleLongPollResponse(data))
-                .catch(() => {
-                    if (!this.livePoll.online) {
-                        return;
-                    }
-                    this.scheduleLongPoll(this.livePoll.retryIn);
-                    this.livePoll.retryIn = Math.min(this.livePoll.retryIn * 2, 5000);
-                });
+            console.warn('[PAX Live] Legacy polling engaged.');
         }
 
         stopLongPoll() {
-            if (this.livePoll.controller) {
-                try {
-                    this.livePoll.controller.abort();
-                } catch (error) {
-                    // ignore
-                }
-                this.livePoll.controller = null;
+            if (window.PAXLiveWidget) {
+                window.PAXLiveWidget.stop();
+                return;
             }
+
             if (this.liveReconnectTimer) {
                 clearTimeout(this.liveReconnectTimer);
                 this.liveReconnectTimer = null;
@@ -3132,20 +3377,20 @@
         }
 
         scheduleLongPoll(delay = 50) {
+            if (window.PAXLiveWidget) {
+                return;
+            }
+
             if (this.liveReconnectTimer) {
                 clearTimeout(this.liveReconnectTimer);
             }
             this.liveReconnectTimer = setTimeout(() => {
-                this.livePoll.controller = null;
                 this.startLongPoll();
             }, delay);
         }
 
-        handleLongPollResponse(data) {
-            this.livePoll.retryIn = 500;
-
+        processLiveMessageBatch(data) {
             if (!data || !Array.isArray(data.messages)) {
-                this.scheduleLongPoll();
                 return;
             }
 
@@ -3177,6 +3422,10 @@
                 }
             });
 
+            if (typeof data.last_id === 'number') {
+                this.livePoll.lastSeq = Math.max(this.livePoll.lastSeq, data.last_id);
+            }
+
             if (data && data.status) {
                 const previousStatus = this.sessions.liveagent.status;
                 this.sessions.liveagent.status = data.status;
@@ -3195,14 +3444,13 @@
 
             if (this.sessions.liveagent.sessionId && this.currentMode === 'liveagent') {
                 this.removeLiveAgentOnboarding();
-                this.syncLiveAgentStatus();
             }
 
             if (data && data.agent) {
                 this.sessions.liveagent.agentInfo = data.agent;
             }
 
-            this.scheduleLongPoll();
+            this.saveState();
         }
 
         pushLiveAgentMessage(message) {
@@ -3216,11 +3464,12 @@
                 timestamp: message.timestamp || message.created_at || new Date().toISOString(),
                 created_at: message.created_at || message.timestamp || new Date().toISOString(),
                 read: !!message.read,
+                clientId: message.clientId || null,
             };
 
             if (normalized.sender === 'user') {
                 const pendingIndex = this.sessions.liveagent.messages.findIndex(
-                    (msg) => msg.pending && msg.sender === 'user'
+                    (msg) => msg.pending && msg.sender === 'user' && (!normalized.clientId || msg.clientId === normalized.clientId)
                 );
                 if (pendingIndex !== -1) {
                     this.sessions.liveagent.messages[pendingIndex] = Object.assign(

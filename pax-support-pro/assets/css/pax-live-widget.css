@@ -1,3 +1,66 @@
+:root {
+    --pax-live-viewport-height: 100dvh;
+    --pax-live-viewport-offset: 0px;
+    --pax-live-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html.pax-live-mode {
+    height: 100%;
+}
+
+html.pax-live-mode body {
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+}
+
+#pax-chat {
+    min-height: var(--pax-live-viewport-height);
+    contain: layout paint;
+}
+
+#pax-messages {
+    max-height: calc(var(--pax-live-viewport-height) - 180px);
+    overscroll-behavior: contain;
+}
+
+.pax-input-area {
+    position: sticky;
+    bottom: 0;
+    inset-inline: 0;
+    padding-inline: 1rem;
+    padding-block: 0.75rem calc(0.75rem + var(--pax-live-safe-bottom));
+    background: rgba(10, 12, 22, 0.82);
+    backdrop-filter: blur(16px);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.75rem;
+    align-items: center;
+    transition: opacity 0.2s ease, transform 0.25s ease;
+}
+
+.pax-input-area.is-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.pax-input-area.is-queued::before {
+    content: attr(data-queue-label);
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+    font-size: 0.8rem;
+    color: rgba(232, 236, 246, 0.72);
+}
+
+.pax-input-area.button-cooldown button {
+    pointer-events: none;
+}
+
+.pax-input-area button.button-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 /* PAX Live Widget enhancements */
 .pax-live-banner {
     display: flex;
@@ -29,6 +92,20 @@
     background: rgba(229, 84, 84, 0.15);
     border: 1px solid rgba(229, 84, 84, 0.4);
     color: #FFE5E5;
+}
+
+.pax-live-offline {
+    background: rgba(31, 41, 55, 0.85);
+    border: 1px solid rgba(209, 213, 219, 0.28);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(17, 24, 39, 0.35);
+}
+
+.pax-live-reconnected {
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.48);
+    color: #ECFDF5;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.25);
 }
 
 .pax-conn-dot {
@@ -125,8 +202,17 @@
     }
 }
 
+.pax-live-hint {
+    font-size: 0.75rem;
+    color: rgba(232, 236, 246, 0.7);
+}
+
 @media (max-width: 640px) {
     .pax-live-actions {
         justify-content: space-between;
+    }
+
+    #pax-messages {
+        max-height: calc(var(--pax-live-viewport-height) - 160px);
     }
 }

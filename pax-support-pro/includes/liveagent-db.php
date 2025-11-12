@@ -22,7 +22,7 @@ function pax_sup_create_liveagent_table() {
         id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
         user_id bigint(20) UNSIGNED NOT NULL,
         agent_id bigint(20) UNSIGNED DEFAULT NULL,
-        status enum('pending','active','closed') NOT NULL DEFAULT 'pending',
+        status enum('pending','active','closed','declined') NOT NULL DEFAULT 'pending',
         started_at datetime NOT NULL,
         ended_at datetime DEFAULT NULL,
         messages longtext DEFAULT NULL,
@@ -39,6 +39,9 @@ function pax_sup_create_liveagent_table() {
         session_notes text DEFAULT NULL,
         rating tinyint(3) UNSIGNED DEFAULT NULL,
         rating_note text DEFAULT NULL,
+        rating_stars tinyint(3) UNSIGNED DEFAULT NULL,
+        rating_comment text DEFAULT NULL,
+        rated_at datetime DEFAULT NULL,
         PRIMARY KEY (id),
         KEY user_id (user_id),
         KEY agent_id (agent_id),
@@ -51,6 +54,15 @@ function pax_sup_create_liveagent_table() {
 
     maybe_add_column( $table_name, 'rating', "ALTER TABLE $table_name ADD rating TINYINT(3) UNSIGNED DEFAULT NULL AFTER session_notes" );
     maybe_add_column( $table_name, 'rating_note', "ALTER TABLE $table_name ADD rating_note text DEFAULT NULL AFTER rating" );
+    maybe_add_column( $table_name, 'rating_stars', "ALTER TABLE $table_name ADD rating_stars TINYINT(3) UNSIGNED DEFAULT NULL AFTER rating_note" );
+    maybe_add_column( $table_name, 'rating_comment', "ALTER TABLE $table_name ADD rating_comment text DEFAULT NULL AFTER rating_stars" );
+    maybe_add_column( $table_name, 'rated_at', "ALTER TABLE $table_name ADD rated_at datetime DEFAULT NULL AFTER rating_comment" );
+
+    // Ensure status enum includes declined state.
+    $status_column = $wpdb->get_row( $wpdb->prepare( "SHOW COLUMNS FROM $table_name LIKE %s", 'status' ), ARRAY_A );
+    if ( $status_column && isset( $status_column['Type'] ) && false === strpos( $status_column['Type'], 'declined' ) ) {
+        $wpdb->query( "ALTER TABLE $table_name MODIFY status ENUM('pending','active','closed','declined') NOT NULL DEFAULT 'pending'" );
+    }
 
     // Verify table was created
     if ( $wpdb->get_var( "SHOW TABLES LIKE '$table_name'" ) !== $table_name ) {
@@ -313,8 +325,7 @@ function pax_sup_get_recent_liveagent_sessions( $limit = 20 ) {
 
     $sessions = $wpdb->get_results(
         $wpdb->prepare(
-            "SELECT * FROM $table_name WHERE status = %s ORDER BY last_activity DESC LIMIT %d",
-            'closed',
+            "SELECT * FROM $table_name WHERE status IN ('closed','declined') ORDER BY last_activity DESC LIMIT %d",
             $limit
         ),
         ARRAY_A
@@ -351,7 +362,7 @@ function pax_sup_update_liveagent_session_status( $session_id, $status, $agent_i
         $format[] = '%d';
     }
 
-    if ( $status === 'closed' ) {
+    if ( in_array( $status, array( 'closed', 'declined' ), true ) ) {
         $data['ended_at'] = current_time( 'mysql' );
         $format[] = '%s';
     }
