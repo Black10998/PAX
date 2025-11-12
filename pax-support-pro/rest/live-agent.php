@@ -482,6 +482,8 @@ function pax_live_agent_messages_stream( $request ) {
         usleep( 400000 );
     } while ( ( time() - $start_time ) < $wait );
 
+    $typing_state = pax_live_agent_get_typing_state( $session_id );
+
     $messages = array_map(
         function( $message ) {
             $seq = (int) ( $message['seq'] ?? 0 );
@@ -503,14 +505,44 @@ function pax_live_agent_messages_stream( $request ) {
     if ( ! empty( $messages ) ) {
         $last_id = max( array_column( $messages, 'seq' ) );
     }
+    $normalized_last_id = max( $last_id, (int) $after );
 
-    return rest_ensure_response( array(
+    $etag_seed = implode(
+        '|',
+        array(
+            $session_id,
+            $session['status'],
+            $session['last_activity'],
+            $normalized_last_id,
+            $typing_state['agent'] ? '1' : '0',
+            $typing_state['user'] ? '1' : '0',
+        )
+    );
+    $etag = '"' . hash( 'sha256', $etag_seed ) . '"';
+
+    $client_etag = trim( (string) $request->get_header( 'If-None-Match' ) );
+    if (
+        $client_etag
+        && $client_etag === $etag
+        && empty( $messages )
+        && $normalized_last_id <= (int) $after
+    ) {
+        $response = new WP_REST_Response( null, 304 );
+        $response->header( 'ETag', $etag );
+        return $response;
+    }
+
+    $response = rest_ensure_response( array(
         'success'    => true,
         'messages'   => $messages,
         'session_id' => $session_id,
         'status'     => $session['status'],
         'last_id'    => $last_id,
+        'typing'     => $typing_state,
     ) );
+    $response->header( 'ETag', $etag );
+
+    return $response;
 }
 
 function pax_live_agent_list_sessions( $request ) {
