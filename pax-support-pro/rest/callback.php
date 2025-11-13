@@ -36,7 +36,7 @@ function pax_sup_rest_callback( WP_REST_Request $request ) {
         );
     }
     
-    $recipient = ! empty( $options['live_agent_email'] ) ? $options['live_agent_email'] : get_option( 'admin_email' );
+    $recipient = get_option( 'admin_email' );
 
     $name = pax_sup_trim( $request->get_param( 'name' ), 120 );
     $phone = pax_sup_trim( $request->get_param( 'phone' ), 40 );

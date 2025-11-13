@@ -81,39 +81,7 @@ function pax_sup_enqueue_admin_assets( $hook ) {
             true
         );
 
-        $settings_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
-        if ( 'live-agent' === $settings_tab ) {
-            wp_enqueue_style(
-                'pax-live-agent-settings',
-                PAX_SUP_URL . 'admin/css/live-agent-settings.css',
-                array( 'pax-settings-modern' ),
-                PAX_SUP_VER
-            );
 
-            wp_enqueue_script(
-                'pax-live-agent-settings',
-                PAX_SUP_URL . 'admin/js/live-agent-settings.js',
-                array(),
-                PAX_SUP_VER,
-                true
-            );
-
-            wp_localize_script(
-                'pax-live-agent-settings',
-                'paxLiveAgentSettings',
-                array(
-                    'restBase'     => trailingslashit( rest_url( 'pax/v1' ) ),
-                    'testEndpoint' => rest_url( 'pax/v1/live/status' ),
-                    'nonce'        => wp_create_nonce( 'wp_rest' ),
-                    'strings'      => array(
-                        'testing' => __( 'Testing connection…', 'pax-support-pro' ),
-                        'success' => __( 'Connection successful!', 'pax-support-pro' ),
-                        'failure' => __( 'Connection failed. Please review your REST API configuration.', 'pax-support-pro' ),
-                        'copied'  => __( 'Copied!', 'pax-support-pro' ),
-                    ),
-                )
-            );
-        }
     }
 
     // Enqueue modern console UI assets
@@ -184,132 +152,7 @@ function pax_sup_enqueue_admin_assets( $hook ) {
         }
     }
 
-    // Live Agent Center assets
-    if ( strpos( $hook, 'pax-live-agent-center' ) !== false ) {
-        wp_enqueue_style(
-            'pax-liveagent-center',
-            PAX_SUP_URL . 'admin/css/live-agent-center.css',
-            array(),
-            PAX_SUP_VER
-        );
-        
-        wp_enqueue_script(
-            'pax-liveagent-center',
-            PAX_SUP_URL . 'admin/js/live-agent-center.js',
-            array( 'jquery' ),
-            PAX_SUP_VER,
-            true
-        );
 
-        $rest_base    = trailingslashit( rest_url( 'pax/v1' ) );
-        $site_domain  = wp_parse_url( get_site_url(), PHP_URL_HOST );
-        $site_domain  = $site_domain ? $site_domain : wp_parse_url( get_site_url(), PHP_URL_HOST );
-        $server_name  = isset( $_SERVER['SERVER_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_NAME'] ) ) : $site_domain;
-        $server_ip    = $server_name ? @gethostbyname( $server_name ) : '';
-        $current_user = wp_get_current_user();
-
-        wp_localize_script(
-            'pax-liveagent-center',
-            'paxLiveAgentCenterConfig',
-            array(
-                'rest'   => array(
-                    'base'        => $rest_base,
-                    'sessions'    => $rest_base . 'sessions',
-                    'session'     => $rest_base . 'session/',
-                    'messages'    => $rest_base . 'messages',
-                    'message'     => $rest_base . 'message',
-                    'accept'      => $rest_base . 'accept',
-                    'decline'     => $rest_base . 'decline',
-                    'close'       => $rest_base . 'close',
-                    'status'      => $rest_base . 'status',
-                    'typing'      => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/status/typing' ) ),
-                    'markRead'    => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/message/mark-read' ) ),
-                    'fileUpload'  => trailingslashit( rest_url( 'pax-support-pro/v1/liveagent/file/upload' ) ),
-                ),
-                'nonce'  => wp_create_nonce( 'wp_rest' ),
-                'assets' => array(
-                    'version' => PAX_SUP_VER,
-                    'commit'  => function_exists( 'pax_sup_get_current_commit_hash' ) ? pax_sup_get_current_commit_hash() : 'n/a',
-                ),
-                'diagnostics' => array(
-                    'restBase'   => $rest_base,
-                    'siteDomain' => $site_domain ?: get_site_url(),
-                    'serverIp'   => $server_ip ?: '',
-                ),
-                'user' => array(
-                    'id'   => $current_user instanceof WP_User ? $current_user->ID : 0,
-                    'name' => $current_user instanceof WP_User ? $current_user->display_name : '',
-                ),
-                'strings' => array(
-                    'pendingTab'      => __( 'Pending', 'pax-support-pro' ),
-                    'activeTab'       => __( 'Active', 'pax-support-pro' ),
-                    'recentTab'       => __( 'Recent', 'pax-support-pro' ),
-                    'noPending'       => __( 'No pending requests.', 'pax-support-pro' ),
-                    'noActive'        => __( 'No active chats.', 'pax-support-pro' ),
-                    'noRecent'        => __( 'No recent sessions yet.', 'pax-support-pro' ),
-                    'accept'          => __( 'Accept', 'pax-support-pro' ),
-                    'decline'         => __( 'Decline', 'pax-support-pro' ),
-                    'close'           => __( 'End Session', 'pax-support-pro' ),
-                    'cancel'          => __( 'Cancel', 'pax-support-pro' ),
-                    'confirmClose'    => __( 'End this chat session?', 'pax-support-pro' ),
-                    'confirmDecline'  => __( 'Decline this chat request?', 'pax-support-pro' ),
-                    'composerHint'    => __( 'Type a reply…', 'pax-support-pro' ),
-                    'acceptPrompt'    => __( 'Accept this chat to reply.', 'pax-support-pro' ),
-                    'closedMessage'   => __( 'This session is closed.', 'pax-support-pro' ),
-                    'sessionClosed'   => __( 'Session closed', 'pax-support-pro' ),
-                    'actionClose'     => __( 'Close chat', 'pax-support-pro' ),
-                    'rateLabel'       => __( 'Rate this chat', 'pax-support-pro' ),
-                    'rateScore'       => __( 'Rate', 'pax-support-pro' ),
-                    'reconnecting'    => __( 'Reconnecting…', 'pax-support-pro' ),
-                    'offline'         => __( 'You are offline', 'pax-support-pro' ),
-                    'closedPrompt'    => __( 'Chat closed.', 'pax-support-pro' ),
-                    'uploadLabel'     => __( 'Attach file', 'pax-support-pro' ),
-                    'uploading'       => __( 'Uploading…', 'pax-support-pro' ),
-                    'uploadFailed'    => __( 'Upload failed. Please try again.', 'pax-support-pro' ),
-                    'messageFailed'   => __( 'Unable to send message. Please try again.', 'pax-support-pro' ),
-                    'send'            => __( 'Send', 'pax-support-pro' ),
-                    'unread'          => __( 'Unread', 'pax-support-pro' ),
-                    'live'            => __( 'Live', 'pax-support-pro' ),
-                    'unknownUser'     => __( 'Guest', 'pax-support-pro' ),
-                    'justNow'         => __( 'Just now', 'pax-support-pro' ),
-                    'ago'             => __( 'ago', 'pax-support-pro' ),
-                    'read'            => __( 'Read', 'pax-support-pro' ),
-                    'pingTesting'     => __( 'Pinging…', 'pax-support-pro' ),
-                    'pingSuccess'     => __( 'REST API reachable', 'pax-support-pro' ),
-                    'pingError'       => __( 'Unable to reach REST API', 'pax-support-pro' ),
-                    'emptyStateTitle' => __( 'No chat selected', 'pax-support-pro' ),
-                    'emptyStateBody'  => __( 'Choose a conversation to see messages here.', 'pax-support-pro' ),
-                ),
-            )
-        );
-
-        wp_localize_script(
-            'pax-liveagent-center',
-            'PAX_LIVE',
-            array(
-                'restBase' => esc_url_raw( $rest_base ),
-                'nonce'    => wp_create_nonce( 'wp_rest' ),
-                'noStore'  => true,
-                'strings'  => array(
-                    'connecting'  => __( 'Connecting to an agent…', 'pax-support-pro' ),
-                    'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
-                    'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
-                    'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
-                    'statusError' => __( 'Unable to connect right now. Please try again.', 'pax-support-pro' ),
-                    'newRequest'  => __( 'New live request', 'pax-support-pro' ),
-                    'newMessage'  => __( 'New message', 'pax-support-pro' ),
-                ),
-                'quickPrompts' => array(
-                    __( 'I need help with my order', 'pax-support-pro' ),
-                    __( 'How long does delivery take?', 'pax-support-pro' ),
-                    __( 'Speak to a human agent', 'pax-support-pro' ),
-                ),
-                'assets' => array(
-                    'ding' => esc_url_raw( PAX_SUP_URL . 'assets/audio/ding.mp3' ),
-                ),
-            )
-        );
-    }
 
     // Analytics page specific assets
     if ( strpos( $hook, 'pax-support-analytics' ) !== false ) {
@@ -494,7 +337,6 @@ function pax_sup_register_admin_menu() {
     );
 
     add_submenu_page( 'pax-support-dashboard', __( 'Dashboard', 'pax-support-pro' ), __( 'Dashboard', 'pax-support-pro' ), $cap, 'pax-support-dashboard', 'pax_sup_render_dashboard' );
-    add_submenu_page( 'pax-support-dashboard', __( 'Live Agent Center', 'pax-support-pro' ), __( 'Live Agent Center', 'pax-support-pro' ), $cap, 'pax-live-agent-center', 'pax_sup_render_live_agent_center_page' );
     add_submenu_page( 'pax-support-dashboard', __( 'Settings', 'pax-support-pro' ), __( 'Settings', 'pax-support-pro' ), $cap, 'pax-support-settings', 'pax_sup_render_settings' );
     add_submenu_page( 'pax-support-dashboard', __( 'Console', 'pax-support-pro' ), __( 'Console', 'pax-support-pro' ), $cap, 'pax-support-console', 'pax_sup_render_console' );
     add_submenu_page( 'pax-support-dashboard', __( 'Tickets', 'pax-support-pro' ), __( 'Tickets', 'pax-support-pro' ), $cap, 'pax-support-tickets', 'pax_sup_render_tickets' );
@@ -563,25 +405,13 @@ function pax_sup_admin_notice( $message, $type = 'success' ) {
  * @param string $active_tab Active tab slug.
  */
 function pax_sup_render_settings_tabs( $active_tab = 'general' ) {
-    $general_url    = admin_url( 'admin.php?page=pax-support-settings' );
-    $live_agent_url = add_query_arg(
-        array(
-            'page' => 'pax-support-settings',
-            'tab'  => 'live-agent',
-        ),
-        admin_url( 'admin.php' )
-    );
+    $general_url = admin_url( 'admin.php?page=pax-support-settings' );
 
     $tabs = array(
-        'general'    => array(
+        'general' => array(
             'label' => __( 'General', 'pax-support-pro' ),
             'url'   => $general_url,
             'icon'  => 'admin-generic',
-        ),
-        'live-agent' => array(
-            'label' => __( 'Live Agent', 'pax-support-pro' ),
-            'url'   => $live_agent_url,
-            'icon'  => 'format-chat',
         ),
     );
 
@@ -609,12 +439,6 @@ function pax_sup_render_settings() {
     }
 
     $active_tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'general';
-
-    if ( 'live-agent' === $active_tab ) {
-        require_once plugin_dir_path( __FILE__ ) . 'settings-live-agent.php';
-        pax_sup_render_live_agent_settings();
-        return;
-    }
 
     // Handle form submission
     if ( 'POST' === $_SERVER['REQUEST_METHOD'] && check_admin_referer( 'pax_sup_save_settings' ) ) {
@@ -666,9 +490,7 @@ function pax_sup_render_settings() {
             'reaction_btn_color'   => sanitize_hex_color( $input['reaction_btn_color'] ?? '#e53935' ),
             'custom_send_icon'     => esc_url_raw( $input['custom_send_icon'] ?? '' ),
             'custom_launcher_icon' => esc_url_raw( $input['custom_launcher_icon'] ?? '' ),
-            'live_agent_email'     => sanitize_email( $input['live_agent_email'] ?? get_option( 'admin_email' ) ),
             'callback_enabled'     => ! empty( $input['callback_enabled'] ) ? 1 : 0,
-            'live_agent_enabled'   => ! empty( $input['live_agent_enabled'] ) ? 1 : 0,
             'help_center_url'      => esc_url_raw( $input['help_center_url'] ?? home_url( '/help/' ) ),
             'whats_new_url'        => esc_url_raw( $input['whats_new_url'] ?? '' ),
             'donate_url'           => esc_url_raw( $input['donate_url'] ?? 'https://www.paypal.me/AhmadAlkhalaf29' ),
@@ -738,7 +560,7 @@ function pax_sup_render_settings() {
  * AJAX handler to update agent online status
  */
 function pax_sup_ajax_update_agent_status() {
-    check_ajax_referer( 'pax_liveagent_nonce', 'nonce' );
+    check_ajax_referer( 'pax_agent_nonce', 'nonce' );
 
     if ( ! current_user_can( 'manage_options' ) && ! current_user_can( 'manage_pax_chats' ) ) {
         wp_send_json_error( array( 'message' => 'Unauthorized' ) );

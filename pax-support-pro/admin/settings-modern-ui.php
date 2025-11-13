@@ -173,24 +173,6 @@ function pax_sup_render_modern_settings( $options = null, $stored_notice = null,
                                 </div>
                             </div>
 
-                            <!-- Enable Live Agent System -->
-                            <div class="pax-form-group">
-                                <div style="display: flex; align-items: center; justify-content: space-between;">
-                                    <div>
-                                        <label class="pax-form-label">
-                                            <span class="dashicons dashicons-businessman"></span>
-                                            <?php esc_html_e( 'Enable Live Agent System', 'pax-support-pro' ); ?>
-                                            <span class="pax-tooltip" data-tooltip="<?php esc_attr_e( 'Activate the Live Agent real-time chat and admin interface', 'pax-support-pro' ); ?>">?</span>
-                                        </label>
-                                        <p class="pax-form-description"><?php esc_html_e( 'Activate the Live Agent real-time chat and admin interface.', 'pax-support-pro' ); ?></p>
-                                    </div>
-                                    <label class="pax-toggle">
-                                        <input type="checkbox" name="live_agent_enabled" <?php checked( $options['live_agent_enabled'] ?? 0 ); ?>>
-                                        <span class="pax-toggle-slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-
                             <!-- Brand Name -->
                             <div class="pax-form-group">
                                 <label class="pax-form-label">

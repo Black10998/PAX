@@ -48,10 +48,6 @@ function pax_sup_enqueue_public_assets() {
     
     // v5.4.2: Add unified chat engine
     wp_enqueue_script( 'pax-unified-chat', PAX_SUP_URL . 'assets/js/pax-unified-chat.js', array( 'pax-support-pro' ), PAX_SUP_VER, true );
-    
-    // v5.8.5: Add live agent addon
-    wp_enqueue_script( 'pax-live-agent-addon', PAX_SUP_URL . 'assets/js/live-agent-addon.js', array( 'pax-unified-chat' ), PAX_SUP_VER, true );
-    wp_enqueue_script( 'pax-live-widget', PAX_SUP_URL . 'assets/js/pax-live-widget.js', array( 'pax-live-agent-addon' ), PAX_SUP_VER, true );
 
     $position = $options['launcher_position'];
     $reaction_color = ! empty( $options['reaction_btn_color'] ) ? $options['reaction_btn_color'] : '#e53935';
@@ -132,8 +128,6 @@ function pax_sup_enqueue_public_assets() {
             'enable_reply_to'      => ! empty( $options['enable_reply_to'] ),
             'enable_quick_actions' => ! empty( $options['enable_quick_actions'] ),
             // v5.3.0: Removed enable_customization (feature removed)
-            // v5.1.4: Live Agent enabled flag
-            'live_agent_enabled'   => ! empty( $options['live_agent_enabled'] ),
             // v5.7.8: Pass color settings to JavaScript
             'color_accent'         => $options['color_accent'] ?? '#e53935',
             'color_bg'             => $options['color_bg'] ?? '#ffffff',
@@ -174,7 +168,6 @@ function pax_sup_enqueue_public_assets() {
             'chat'     => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/chat' ) ),
             'ai'       => esc_url_raw( rest_url( 'pax-support/v1/ai-chat' ) ),
             'cooldown' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/ticket-cooldown' ) ),
-            'agent'    => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/live-agent' ) ),
             'callback' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/callback' ) ),
             'schedule' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/schedule' ) ),
             'scheduleBase' => esc_url_raw( trailingslashit( rest_url( PAX_SUP_REST_NS . '/schedule' ) ) ),
@@ -189,15 +182,6 @@ function pax_sup_enqueue_public_assets() {
             'feedback' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/feedback' ) ),
             'donate'   => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/donate' ) ),
             'reactions' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/reactions' ) ),
-            // v5.1.4: Live Agent REST endpoints
-            'liveagent' => array(
-                'create'        => esc_url_raw( rest_url( 'pax/v1/live/session' ) ),
-                'poll'          => esc_url_raw( rest_url( 'pax/v1/live/messages' ) ),
-                'send'          => esc_url_raw( rest_url( 'pax/v1/live/message' ) ),
-                'close'         => esc_url_raw( rest_url( 'pax/v1/live/close' ) ),
-                'agent_online'  => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/liveagent/status/agent-online' ) ),
-                'legacy_create' => esc_url_raw( rest_url( PAX_SUP_REST_NS . '/liveagent/session/create' ) ),
-            ),
         ),
         'links'   => array(
             'help'      => esc_url( $options['help_center_url'] ),
@@ -216,35 +200,6 @@ function pax_sup_enqueue_public_assets() {
             'copiedToClipboard' => __( 'Copied to clipboard', 'pax-support-pro' ),
             'liked' => __( 'Liked!', 'pax-support-pro' ),
             'feedbackNoted' => __( 'Feedback noted', 'pax-support-pro' ),
-            // v5.1.4: Live Agent strings
-            'liveagent' => array(
-                'welcomeTitle' => __( '👋 Welcome to Support', 'pax-support-pro' ),
-                'welcomeSubtitle' => __( 'How can we help you today?', 'pax-support-pro' ),
-                'chatWithAssistant' => __( '💬 Chat with Assistant', 'pax-support-pro' ),
-                'connectLiveAgent' => __( '🎧 Connect with Live Agent', 'pax-support-pro' ),
-                'agentOnline' => __( 'Agent Online', 'pax-support-pro' ),
-                'agentOffline' => __( 'Agent Offline', 'pax-support-pro' ),
-                'connecting' => __( 'Connecting to an agent…', 'pax-support-pro' ),
-                'queue'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
-                'connected'  => __( 'Agent connected!', 'pax-support-pro' ),
-                'agentTyping' => __( 'Agent is typing...', 'pax-support-pro' ),
-                'sessionEnded' => __( 'Chat session ended', 'pax-support-pro' ),
-                'endSession' => __( 'End Session', 'pax-support-pro' ),
-                'confirmEnd' => __( 'Are you sure you want to end this chat session?', 'pax-support-pro' ),
-                'typeMessage' => __( 'Type your message...', 'pax-support-pro' ),
-                'send' => __( 'Send', 'pax-support-pro' ),
-                'loginToChat' => __( 'Please log in to start a chat.', 'pax-support-pro' ),
-                'loginButton' => __( 'Log In', 'pax-support-pro' ),
-                'onboardingTitle' => __( 'Need live support?', 'pax-support-pro' ),
-                'onboardingSubtitle' => __( 'Choose how you would like to get help:', 'pax-support-pro' ),
-                'onboardingStart' => __( 'Start Live Chat', 'pax-support-pro' ),
-                'onboardingAssistant' => __( 'Ask Assistant first', 'pax-support-pro' ),
-                'onboardingLeaveMessage' => __( 'Leave a message', 'pax-support-pro' ),
-                'statusConnecting' => __( 'Connecting to an agent…', 'pax-support-pro' ),
-                'statusQueue' => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
-                'statusConnected' => __( 'Agent connected!', 'pax-support-pro' ),
-                'statusError' => __( 'Unable to connect to a live agent right now.', 'pax-support-pro' ),
-            ),
         ),
         'isLoggedIn' => is_user_logged_in(),
         'loginUrl'   => esc_url_raw( $login_url ),
@@ -277,39 +232,7 @@ function pax_sup_enqueue_public_assets() {
 
     wp_localize_script( 'pax-support-pro', 'paxSupportPro', $localize );
 
-    wp_localize_script(
-        'pax-live-agent-addon',
-        'PAX_LIVE',
-        array(
-            'restBase' => esc_url_raw( rest_url( 'pax/v1' ) ),
-            'nonce'    => $rest_nonce,
-            'noStore'  => true,
-            'strings'  => array(
-                'connecting'  => __( 'Connecting to an agent…', 'pax-support-pro' ),
-                'queued'      => __( 'You are now in queue, please wait…', 'pax-support-pro' ),
-                'connected'   => __( 'Agent connected!', 'pax-support-pro' ),
-                'reconnecting'=> __( 'Reconnecting…', 'pax-support-pro' ),
-                'offline'     => __( 'You are offline', 'pax-support-pro' ),
-                'typeHere'    => __( 'Type your message…', 'pax-support-pro' ),
-                'statusError' => __( 'Unable to connect right now. Please try again.', 'pax-support-pro' ),
-                'closedPrompt'=> __( 'Chat closed.', 'pax-support-pro' ),
-                'actionClose' => __( 'Close chat', 'pax-support-pro' ),
-                'rateLabel'   => __( 'Rate this chat', 'pax-support-pro' ),
-                'rateScore'   => __( 'Rate', 'pax-support-pro' ),
-                'newRequest'  => __( 'New live request', 'pax-support-pro' ),
-                'newMessage'  => __( 'New message', 'pax-support-pro' ),
-                'sessionClosed' => __( 'Session closed', 'pax-support-pro' ),
-            ),
-            'quickPrompts' => array(
-                __( 'I need help with my order', 'pax-support-pro' ),
-                __( 'How long does delivery take?', 'pax-support-pro' ),
-                __( 'Speak to a human agent', 'pax-support-pro' ),
-            ),
-            'assets' => array(
-                'ding' => esc_url_raw( PAX_SUP_URL . 'assets/audio/ding.mp3' ),
-            ),
-        )
-    );
+
     
     // v5.5.3: Add inline script to dispatch settings-ready event
     $inline_script = "

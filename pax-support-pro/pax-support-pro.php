@@ -3,7 +3,7 @@
  * Plugin Name: PAX Support Pro
  * Plugin URI: https://github.com/Black10998/PAX
  * Description: Professional support ticket system with modern admin UI, real-time chat, AJAX-powered scheduler, and comprehensive callback management. Features include ChatGPT-style reactions, customizable welcome text, smooth animations, custom menus, and advanced analytics.
- * Version: 6.4.0
+ * Version: 6.5.1
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Ahmad AlKhalaf
@@ -15,7 +15,7 @@
  * Domain Path: /languages
  * 
  * @package PAX_Support_Pro
- * @version 6.4.0
+ * @version 6.5.1
  * @since 1.0.0
  */
 
@@ -40,7 +40,7 @@ if ( ! defined( 'PAX_SUP_NS' ) ) {
 }
 
 if ( ! defined( 'PAX_SUP_VER' ) ) {
-    define( 'PAX_SUP_VER', '6.4.0' );
+    define( 'PAX_SUP_VER', '6.5.1' );
 }
 
 if ( ! defined( 'PAX_SUP_OPT_KEY' ) ) {
@@ -58,10 +58,6 @@ require_once PAX_SUP_DIR . 'includes/quickpanel.php';
 require_once PAX_SUP_DIR . 'includes/updater.php';
 require_once PAX_SUP_DIR . 'includes/export-import.php';
 require_once PAX_SUP_DIR . 'includes/notifications.php';
-require_once PAX_SUP_DIR . 'includes/liveagent-db.php';
-require_once PAX_SUP_DIR . 'includes/liveagent-settings.php';
-require_once PAX_SUP_DIR . 'includes/liveagent-capabilities.php';
-require_once PAX_SUP_DIR . 'includes/rest-api.php';
 require_once PAX_SUP_DIR . 'includes/rest/chat-endpoints.php';
 require_once PAX_SUP_DIR . 'admin/settings.php';
 require_once PAX_SUP_DIR . 'admin/console.php';
@@ -74,7 +70,6 @@ require_once PAX_SUP_DIR . 'admin/pages/roles-permissions.php';
 require_once PAX_SUP_DIR . 'admin/pages/analytics-dashboard.php';
 require_once PAX_SUP_DIR . 'admin/pages/system-health.php';
 require_once PAX_SUP_DIR . 'admin/pages/theme-settings.php';
-require_once PAX_SUP_DIR . 'admin/pages/live-agent-center.php';
 require_once PAX_SUP_DIR . 'admin/pages/chat-reactions.php';
 
 // Load test page only in development
@@ -83,21 +78,13 @@ if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 }
 
 require_once PAX_SUP_DIR . 'public/chat.php';
-// v5.4.2: Legacy Live Chat button disabled - now using unified interface
-// require_once PAX_SUP_DIR . 'public/liveagent-button.php';
 require_once PAX_SUP_DIR . 'rest/chat.php';
 require_once PAX_SUP_DIR . 'rest/ticket.php';
-require_once PAX_SUP_DIR . 'rest/agent.php';
 require_once PAX_SUP_DIR . 'rest/callback.php';
 require_once PAX_SUP_DIR . 'rest/support.php';
 require_once PAX_SUP_DIR . 'rest/scheduler.php';
 require_once PAX_SUP_DIR . 'rest/attachment.php';
 require_once PAX_SUP_DIR . 'rest/system-health.php';
-require_once PAX_SUP_DIR . 'rest/liveagent-session.php';
-require_once PAX_SUP_DIR . 'rest/liveagent-message.php';
-require_once PAX_SUP_DIR . 'rest/liveagent-status.php';
-require_once PAX_SUP_DIR . 'rest/liveagent-file.php';
-require_once PAX_SUP_DIR . 'rest/live-agent.php';
 require_once PAX_SUP_DIR . 'rest/reactions.php';
 
 /**

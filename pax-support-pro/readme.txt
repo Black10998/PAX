@@ -1,10 +1,10 @@
 === PAX Support Pro ===
 Contributors: ahmadalkhalaf
-Tags: support, chat, helpdesk, tickets, callback, live-chat, customer-support
+Tags: support, chat, helpdesk, tickets, callback, customer-support
 Requires at least: 6.2
 Tested up to: 6.4
 Requires PHP: 8.0
-Stable tag: 6.4.0
+Stable tag: 6.5.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -14,13 +14,9 @@ Professional support and chat system with optional AI integration for automated 
 
 PAX Support Pro is a professional support and chat system with optional AI integration using the OpenAI API for automated responses. Built with precision and performance in mind, it provides a complete helpdesk solution for WordPress sites.
 
-= CDN / WAF =
-
-Ensure your CDN or web application firewall bypasses `^/wp-json/pax/v1/*` so real-time chat REST endpoints remain accessible for the Live Agent experience.
-
 = Key Features =
 
-* **Live Chat System** - Real-time chat with modern glass-neon UI
+* **AI Chat Assistant** - AI-powered chat with modern glass-neon UI
 * **Ticket Management** - Full ticketing system with status tracking
 * **Callback Scheduling** - Allow users to schedule callback requests
 * **Analytics Dashboard** - Interactive charts with Charts.js, CSV export, auto-refresh
@@ -104,6 +100,17 @@ Yes, the plugin is compatible with popular caching plugins including WP Rocket, 
 5. AI Assistant configuration (optional)
 
 == Changelog ==
+
+= 6.5.1 - 2025-11-13 =
+* Removed entire LifeAgent/Live Agent Center module from the plugin
+* Fixed image upload feature with improved MIME type validation and compatibility
+* Enhanced file upload handling for all WordPress environments (single site, multisite, PHP 7/8)
+* Improved file permissions fallback for different hosting environments
+* Fixed upload directory creation with better error handling
+* Corrected all internal plugin paths to use dynamic WordPress-safe paths
+* Removed all LifeAgent-related REST API endpoints, admin pages, and frontend components
+* Cleaned up database operations and settings related to LifeAgent
+* Updated plugin structure for better maintainability
 
 = 6.4.0 - 2025-11-12 =
 * Instant 1s widget polling with `after=last_id`, weak ETags/304 handling, nocache headers, and automatic refresh after every send.

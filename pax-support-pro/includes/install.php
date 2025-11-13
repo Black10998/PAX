@@ -15,10 +15,6 @@ function pax_sup_activate() {
     
     // Create database tables
     pax_sup_ensure_ticket_tables();
-    
-    // Create live agent table
-    require_once PAX_SUP_DIR . 'includes/liveagent-db.php';
-    pax_sup_create_liveagent_table();
 
     // Schedule auto-update checks
     if ( function_exists( 'pax_sup_updater' ) ) {

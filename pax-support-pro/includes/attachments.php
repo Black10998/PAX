@@ -49,26 +49,40 @@ function pax_sup_get_max_file_size() {
  */
 function pax_sup_get_upload_dir() {
     $upload_dir = wp_upload_dir();
-    $pax_dir    = trailingslashit( $upload_dir['basedir'] ) . 'pax-support-pro/attachments';
+    
+    // Handle multisite and various WordPress configurations
+    if ( isset( $upload_dir['error'] ) && $upload_dir['error'] !== false ) {
+        // Fallback to WP_CONTENT_DIR if wp_upload_dir() fails
+        $pax_dir = WP_CONTENT_DIR . '/uploads/pax-support-pro/attachments';
+    } else {
+        $pax_dir = trailingslashit( $upload_dir['basedir'] ) . 'pax-support-pro/attachments';
+    }
 
     if ( ! file_exists( $pax_dir ) ) {
-        wp_mkdir_p( $pax_dir );
-        
-        // Create .htaccess for security
-        $htaccess_file = $pax_dir . '/.htaccess';
-        if ( ! file_exists( $htaccess_file ) ) {
-            $htaccess_content = "Options -Indexes\n";
-            $htaccess_content .= "<FilesMatch \"\\.(jpg|jpeg|png|gif|pdf|doc|docx|xls|xlsx|txt|zip)$\">\n";
-            $htaccess_content .= "    Order Allow,Deny\n";
-            $htaccess_content .= "    Allow from all\n";
-            $htaccess_content .= "</FilesMatch>\n";
-            file_put_contents( $htaccess_file, $htaccess_content );
+        // Create directory with proper permissions
+        if ( ! wp_mkdir_p( $pax_dir ) ) {
+            // Fallback: try creating with mkdir if wp_mkdir_p fails
+            @mkdir( $pax_dir, 0755, true );
         }
+        
+        // Verify directory was created
+        if ( file_exists( $pax_dir ) ) {
+            // Create .htaccess for security
+            $htaccess_file = $pax_dir . '/.htaccess';
+            if ( ! file_exists( $htaccess_file ) ) {
+                $htaccess_content = "Options -Indexes\n";
+                $htaccess_content .= "<FilesMatch \"\\.(jpg|jpeg|png|gif|pdf|doc|docx|xls|xlsx|txt|zip)$\">\n";
+                $htaccess_content .= "    Order Allow,Deny\n";
+                $htaccess_content .= "    Allow from all\n";
+                $htaccess_content .= "</FilesMatch>\n";
+                @file_put_contents( $htaccess_file, $htaccess_content );
+            }
 
-        // Create index.php for security
-        $index_file = $pax_dir . '/index.php';
-        if ( ! file_exists( $index_file ) ) {
-            file_put_contents( $index_file, '<?php // Silence is golden.' );
+            // Create index.php for security
+            $index_file = $pax_dir . '/index.php';
+            if ( ! file_exists( $index_file ) ) {
+                @file_put_contents( $index_file, '<?php // Silence is golden.' );
+            }
         }
     }
 
@@ -82,6 +96,13 @@ function pax_sup_get_upload_dir() {
  */
 function pax_sup_get_upload_url() {
     $upload_dir = wp_upload_dir();
+    
+    // Handle multisite and various WordPress configurations
+    if ( isset( $upload_dir['error'] ) && $upload_dir['error'] !== false ) {
+        // Fallback to content URL if wp_upload_dir() fails
+        return content_url( 'uploads/pax-support-pro/attachments' );
+    }
+    
     return trailingslashit( $upload_dir['baseurl'] ) . 'pax-support-pro/attachments';
 }
 
@@ -133,14 +154,39 @@ function pax_sup_validate_file( $file ) {
         );
     }
 
+    // Validate MIME type using multiple methods for better compatibility
     $file_type = isset( $file['type'] ) ? $file['type'] : '';
-    if ( $file_type && $file_type !== $allowed[ $file_ext ] ) {
+    $expected_mime = $allowed[ $file_ext ];
+    
+    // Try finfo first (most reliable)
+    if ( function_exists( 'finfo_open' ) && isset( $file['tmp_name'] ) && file_exists( $file['tmp_name'] ) ) {
         $finfo = finfo_open( FILEINFO_MIME_TYPE );
         if ( $finfo ) {
             $detected_type = finfo_file( $finfo, $file['tmp_name'] );
             finfo_close( $finfo );
             
-            if ( $detected_type && $detected_type !== $allowed[ $file_ext ] ) {
+            // Allow some common MIME type variations
+            $mime_variations = array(
+                'image/jpeg' => array( 'image/jpeg', 'image/jpg', 'image/pjpeg' ),
+                'image/png'  => array( 'image/png', 'image/x-png' ),
+                'text/plain' => array( 'text/plain', 'text/x-plain' ),
+            );
+            
+            $allowed_mimes = isset( $mime_variations[ $expected_mime ] ) 
+                ? $mime_variations[ $expected_mime ] 
+                : array( $expected_mime );
+            
+            if ( $detected_type && ! in_array( $detected_type, $allowed_mimes, true ) ) {
+                return new WP_Error( 'mime_mismatch', __( 'File type does not match extension.', 'pax-support-pro' ) );
+            }
+        }
+    }
+    // Fallback to mime_content_type if finfo not available
+    elseif ( function_exists( 'mime_content_type' ) && isset( $file['tmp_name'] ) && file_exists( $file['tmp_name'] ) ) {
+        $detected_type = mime_content_type( $file['tmp_name'] );
+        if ( $detected_type && $detected_type !== $expected_mime ) {
+            // Allow common variations
+            if ( ! ( $expected_mime === 'image/jpeg' && in_array( $detected_type, array( 'image/jpg', 'image/pjpeg' ), true ) ) ) {
                 return new WP_Error( 'mime_mismatch', __( 'File type does not match extension.', 'pax-support-pro' ) );
             }
         }
@@ -169,9 +215,17 @@ function pax_sup_handle_file_upload( $file, $ticket_id, $user_id ) {
         return $validation;
     }
 
-    require_once ABSPATH . 'wp-admin/includes/file.php';
+    // Ensure WordPress file handling functions are available
+    if ( ! function_exists( 'wp_handle_upload' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+    }
 
     $upload_dir = pax_sup_get_upload_dir();
+    
+    // Verify upload directory exists and is writable
+    if ( ! file_exists( $upload_dir ) || ! is_writable( $upload_dir ) ) {
+        return new WP_Error( 'upload_dir_error', __( 'Upload directory is not writable.', 'pax-support-pro' ) );
+    }
     
     // Generate unique filename
     $file_name = $validation['name'];
@@ -183,6 +237,7 @@ function pax_sup_handle_file_upload( $file, $ticket_id, $user_id ) {
     $upload_overrides = array(
         'test_form' => false,
         'mimes'     => pax_sup_get_allowed_file_types(),
+        'test_type' => true, // Enable MIME type checking
     );
 
     // Temporarily override upload directory
@@ -202,9 +257,22 @@ function pax_sup_handle_file_upload( $file, $ticket_id, $user_id ) {
 
     // Rename to unique name
     $new_path = $upload_dir . '/' . $unique_name;
-    if ( ! rename( $uploaded_file['file'], $new_path ) ) {
-        @unlink( $uploaded_file['file'] );
-        return new WP_Error( 'rename_failed', __( 'Failed to process uploaded file.', 'pax-support-pro' ) );
+    
+    // Use copy + unlink as fallback if rename fails (works better across filesystems)
+    if ( ! @rename( $uploaded_file['file'], $new_path ) ) {
+        if ( @copy( $uploaded_file['file'], $new_path ) ) {
+            @unlink( $uploaded_file['file'] );
+        } else {
+            @unlink( $uploaded_file['file'] );
+            return new WP_Error( 'rename_failed', __( 'Failed to process uploaded file.', 'pax-support-pro' ) );
+        }
+    }
+    
+    // Set proper file permissions (fallback for different hosting environments)
+    if ( file_exists( $new_path ) ) {
+        $perms = 0644;
+        // Try to set permissions, but don't fail if it doesn't work (some hosts restrict this)
+        @chmod( $new_path, $perms );
     }
 
     return array(

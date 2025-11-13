@@ -343,7 +343,6 @@ function pax_sup_rest_security_filter( $result, $handler, WP_REST_Request $reque
         $watch = array(
             '/' . PAX_SUP_REST_NS . '/chat',
             '/' . PAX_SUP_REST_NS . '/ticket',
-            '/' . PAX_SUP_REST_NS . '/live-agent',
             '/' . PAX_SUP_REST_NS . '/callback',
             '/pax-support/v1/ai-chat',
         );
@@ -371,7 +370,7 @@ function pax_sup_rest_security_filter( $result, $handler, WP_REST_Request $reque
             );
         }
 
-        if ( in_array( $route, array( '/' . PAX_SUP_REST_NS . '/chat', '/' . PAX_SUP_REST_NS . '/live-agent', '/' . PAX_SUP_REST_NS . '/callback', '/pax-support/v1/ai-chat' ), true ) ) {
+        if ( in_array( $route, array( '/' . PAX_SUP_REST_NS . '/chat', '/' . PAX_SUP_REST_NS . '/callback', '/pax-support/v1/ai-chat' ), true ) ) {
             $content_type = isset( $_SERVER['CONTENT_TYPE'] ) ? strtolower( sanitize_text_field( wp_unslash( $_SERVER['CONTENT_TYPE'] ) ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
             if ( false === strpos( $content_type, 'application/json' ) ) {
                 return new WP_REST_Response(

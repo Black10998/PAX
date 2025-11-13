@@ -34,9 +34,7 @@ function pax_sup_default_options() {
         'color_border'         => '#e0e0e0',
         'color_text'           => '#212121',
         'color_sub'            => '#757575',
-        'live_agent_email'     => get_option( 'admin_email' ),
         'callback_enabled'     => 1,
-        'live_agent_enabled'   => 0,
         'help_center_url'      => home_url( '/help/' ),
         'whats_new_url'        => '',
         'donate_url'           => 'https://www.paypal.me/AhmadAlkhalaf29',
@@ -463,9 +461,7 @@ function pax_sup_get_agent_email( $agent_id ) {
         return $user->user_email;
     }
 
-    $options = pax_sup_get_options();
-
-    return ! empty( $options['live_agent_email'] ) ? $options['live_agent_email'] : get_option( 'admin_email' );
+    return get_option( 'admin_email' );
 }
 
 function pax_sup_notify_schedule_event( array $schedule, $context = 'created' ) {
