@@ -1374,40 +1374,8 @@
             const header = this.chatWindow.querySelector('.pax-header');
             if (!header) return;
 
-            // Create mode switcher tabs
-            const switcher = document.createElement('div');
-            switcher.className = 'pax-mode-switcher';
-            switcher.innerHTML = `
-                <button class="pax-mode-tab ${this.currentMode === 'assistant' ? 'active' : ''}" data-mode="assistant">
-                    <span class="dashicons dashicons-format-chat"></span>
-                    <span class="pax-mode-label">Assistant</span>
-                </button>
-                <button class="pax-mode-tab ${this.currentMode === 'liveagent' ? 'active' : ''}" data-mode="liveagent">
-                    <span class="dashicons dashicons-businessman"></span>
-                    <span class="pax-mode-label">Live Agent</span>
-                    <span class="pax-unread-badge" style="display: none;">0</span>
-                </button>
-            `;
-
-            // Insert after header title
-            const titleDiv = header.querySelector('div');
-            if (titleDiv) {
-                titleDiv.after(switcher);
-            } else {
-                header.appendChild(switcher);
-            }
-
-            this.modeSwitcher = switcher;
-
-            // Add click handlers
-            switcher.querySelectorAll('.pax-mode-tab').forEach(tab => {
-                tab.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const mode = tab.dataset.mode;
-                    if (mode !== this.currentMode) {
-                        this.switchMode(mode);
-                    }
-                });
+            // No mode switcher needed - always in assistant mode
+            this.modeSwitcher = null;
             });
         }
 
@@ -2364,29 +2332,9 @@
         }
 
         async switchMode(mode, saveState = true) {
-            if (mode !== 'assistant' && mode !== 'liveagent') {
-                console.error('Invalid mode:', mode);
-                return;
-            }
-
-            // Save current state
-            if (saveState) {
-                this.saveState();
-            }
-
-            // Stop polling if switching away from liveagent
-            if (this.currentMode === 'liveagent' && mode !== 'liveagent') {
-                this.stopPolling();
-            }
-
-            const switchingToLive = mode === 'liveagent';
-            if (switchingToLive) {
-                if (typeof this.showLiveBanner === 'function' && !this.sessions.liveagent.sessionId) {
-                    this.showLiveBanner('connecting');
-                }
-                await this.ensureLiveAgentSession();
-            }
-
+            // Always use assistant mode
+            mode = 'assistant';
+            
             // Update mode
             this.currentMode = mode;
 
@@ -2399,32 +2347,7 @@
             // Update input placeholder
             if (this.inputField) {
                 const assistantPlaceholder = window.paxSupportPro?.strings?.assistantPlaceholder || 'Ask me anything...';
-                const liveagentPlaceholder = this.getLiveAgentString('typeHere', 'Type your message…');
-                this.inputField.placeholder = mode === 'liveagent'
-                    ? liveagentPlaceholder
-                    : assistantPlaceholder;
-            }
-
-            // Start polling for liveagent
-            // Clear unread badge for switched mode
-            if (mode === 'liveagent') {
-                this.sessions.liveagent.unreadCount = 0;
-                this.updateUnreadBadge();
-
-                if (this.sessions.liveagent.sessionId) {
-                    this.removeLiveAgentOnboarding();
-                    this.startPolling();
-                    this.syncLiveAgentStatus();
-                    this.renderQuickPromptsBar();
-                } else {
-                    this.renderLiveAgentOnboarding();
-                }
-            } else {
-                this.removeLiveAgentOnboarding();
-                this.removeQuickPromptsBar();
-                if (typeof this.hideLiveBanner === 'function') {
-                    this.hideLiveBanner();
-                }
+                this.inputField.placeholder = assistantPlaceholder;
             }
 
             // Save state
@@ -2436,105 +2359,25 @@
         }
 
         updateModeUI() {
-            // Update tab active state
-            if (this.modeSwitcher) {
-                this.modeSwitcher.querySelectorAll('.pax-mode-tab').forEach(tab => {
-                    tab.classList.toggle('active', tab.dataset.mode === this.currentMode);
-                });
-            }
-
             // Update header subtitle
             const subtitle = this.chatWindow.querySelector('.pax-sub');
             if (subtitle) {
-                subtitle.textContent = this.currentMode === 'liveagent' ? 'Live Agent' : 'Assistant';
+                subtitle.textContent = 'Assistant';
             }
 
-            // Update chat window class
-            this.chatWindow.classList.toggle('mode-liveagent', this.currentMode === 'liveagent');
-            this.chatWindow.classList.toggle('mode-assistant', this.currentMode === 'assistant');
+            // Update chat window class - always assistant mode
+            this.chatWindow.classList.remove('mode-liveagent');
+            this.chatWindow.classList.add('mode-assistant');
         }
 
         renderLiveAgentOnboarding() {
-            if (!this.messageContainer) {
-                return;
-            }
-
-            if (this.messageContainer.querySelector('.pax-liveagent-onboarding')) {
-                return;
-            }
-
-            const strings = window.paxSupportPro?.strings?.liveagent || {};
-            const panel = document.createElement('div');
-            panel.className = 'pax-liveagent-onboarding';
-            panel.innerHTML = `
-                <div class="pax-liveagent-onboarding__inner">
-                    <div class="pax-liveagent-onboarding__content">
-                        <h3>${this.getLiveAgentString('onboardingTitle', 'Need live support?')}</h3>
-                        <p>${this.getLiveAgentString('onboardingSubtitle', 'Choose how you would like to get help:')}</p>
-                    </div>
-                    <div class="pax-liveagent-onboarding__actions">
-                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--primary" data-action="start">
-                            ${this.getLiveAgentString('onboardingStart', 'Start Live Chat')}
-                        </button>
-                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--secondary" data-action="assistant">
-                            ${this.getLiveAgentString('onboardingAssistant', 'Ask Assistant first')}
-                        </button>
-                        <button type="button" class="pax-liveagent-btn pax-liveagent-btn--ghost" data-action="message">
-                            ${this.getLiveAgentString('onboardingLeaveMessage', 'Leave a message')}
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            this.messageContainer.appendChild(panel);
-            this.sessions.liveagent.onboardingVisible = true;
-
-            const startBtn = panel.querySelector('[data-action="start"]');
-            const assistantBtn = panel.querySelector('[data-action="assistant"]');
-            const messageBtn = panel.querySelector('[data-action="message"]');
-
-            if (startBtn) {
-                startBtn.addEventListener('click', () => {
-                    if (startBtn.disabled) {
-                        return;
-                    }
-                    startBtn.disabled = true;
-                    startBtn.classList.add('is-loading');
-                    this.removeLiveAgentOnboarding();
-                    if (typeof this.startLiveAgent === 'function') {
-                        this.startLiveAgent();
-                    } else {
-                        this.ensureLiveAgentSession(true).then(() => {
-                            this.startPolling();
-                            this.syncLiveAgentStatus();
-                        });
-                    }
-                });
-            }
-
-            if (assistantBtn) {
-                assistantBtn.addEventListener('click', () => {
-                    this.switchMode('assistant', true);
-                });
-            }
-
-            if (messageBtn) {
-                messageBtn.addEventListener('click', () => {
-                    this.openNewTicket();
-                    this.switchMode('assistant', true);
-                });
-            }
+            // Live Agent removed - do nothing
+            return;
         }
 
         removeLiveAgentOnboarding() {
-            if (!this.messageContainer) {
-                return;
-            }
-            const panel = this.messageContainer.querySelector('.pax-liveagent-onboarding');
-            if (panel && panel.parentNode) {
-                panel.parentNode.removeChild(panel);
-            }
-            this.sessions.liveagent.onboardingVisible = false;
+            // Live Agent removed - do nothing
+            return;
         }
 
         getLiveRestBase() {
@@ -2708,23 +2551,8 @@
         }
 
         syncLiveAgentStatus() {
-            if (typeof this.hideLiveBanner === 'function' && this.currentMode !== 'liveagent') {
-                this.hideLiveBanner();
-                return;
-            }
-
-            if (typeof this.showLiveBanner !== 'function') {
-                return;
-            }
-
-            const status = this.sessions.liveagent.status;
-            if (status === 'accepted' || status === 'active') {
-                this.showLiveBanner('connected');
-            } else if (status === 'pending') {
-                this.showLiveBanner('queue');
-            } else if (status === 'connecting') {
-                this.showLiveBanner('connecting');
-            }
+            // Live Agent removed - do nothing
+            return;
         }
 
         getLiveAgentString(key, fallback = '') {
@@ -2767,23 +2595,15 @@
                 timestamp: new Date().toISOString(),
                 replyTo: replyTo ? replyTo.id : null
             };
-            userMsg.pending = (this.currentMode === 'liveagent');
 
-            if (this.currentMode === 'liveagent') {
-                this.sessions.liveagent.messages.push(userMsg);
-            } else {
-                this.sessions.assistant.messages.push(userMsg);
-            }
+            // Always use assistant mode
+            this.sessions.assistant.messages.push(userMsg);
             this.renderMessage(userMsg);
             this.scrollToBottom();
 
             // Send to server
             try {
-                if (this.currentMode === 'assistant') {
-                    await this.sendAssistantMessage(message, replyTo);
-                } else {
-                    await this.sendLiveAgentMessage(message, replyTo);
-                }
+                await this.sendAssistantMessage(message, replyTo);
             } catch (error) {
                 console.error('Error sending message:', error);
                 this.showError('Failed to send message. Please try again.');
@@ -2892,80 +2712,8 @@
         }
 
         async ensureLiveAgentSession(force = false) {
-            if (this.sessions.liveagent.sessionId && !force) {
-                return;
-            }
-
-            try {
-                try {
-                    window.dispatchEvent(new CustomEvent('pax:live-mode-on'));
-                    if (window.PAX_ASSISTANT?.pause) {
-                        window.PAX_ASSISTANT.pause();
-                    }
-                } catch (error) {
-                    // ignore assistant pause errors
-                }
-
-                const endpoint = this.buildLiveUrl('live/session');
-                const currentUser = window.paxSupportPro?.currentUser || {};
-
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: this.buildLiveHeaders({
-                        'Content-Type': 'application/json'
-                    }),
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                    body: JSON.stringify({
-                        user_meta: {
-                            id: currentUser?.id || 0,
-                            name: currentUser?.name || 'Guest',
-                            email: currentUser?.email || ''
-                        },
-                        page_url: window.location.href,
-                        user_agent: navigator.userAgent
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success && (data.session || data.session_id)) {
-                    const sessionSummary = data.session || {};
-                    const sessionId = sessionSummary.id || data.session_id;
-
-                    this.sessions.liveagent.sessionId = sessionId;
-                    this.sessions.liveagent.status = sessionSummary.status || data.status || 'pending';
-                    this.sessions.liveagent.userName = sessionSummary.user_name || sessionSummary.userName || this.sessions.liveagent.userName;
-                    this.sessions.liveagent.userEmail = sessionSummary.user_email || sessionSummary.userEmail || this.sessions.liveagent.userEmail;
-                    this.sessions.liveagent.restBase = this.getLiveRestBase();
-                    this.sessions.liveagent.rating = sessionSummary.rating || null;
-                    this.sessions.liveagent.rating_note = sessionSummary.rating_note || '';
-                    this.livePoll.lastSeq = 0;
-                    this.livePoll.dedupe.clear();
-                    this.livePoll.online = ( typeof navigator === 'undefined' ) ? true : navigator.onLine !== false;
-                    if (force) {
-                        this.sessions.liveagent.messages = [];
-                    }
-                    this.setComposerEnabled(false);
-                    this.saveState();
-
-                    console.log('Live Agent session created:', sessionId);
-
-                    if (typeof this.syncLiveAgentStatus === 'function') {
-                        this.syncLiveAgentStatus();
-                    }
-
-                    this.showLiveBanner('queue');
-                    this.renderQuickPromptsBar();
-                    this.startLongPoll(true);
-                }
-            } catch (error) {
-                console.error('Error creating Live Agent session:', error);
-                if (typeof this.showLiveBanner === 'function') {
-                    this.showLiveBanner('error', this.getLiveAgentString('statusError', 'Unable to connect right now. Please try again.'));
-                }
-                this.stopLongPoll();
-            }
+            // Live Agent removed - do nothing
+            return;
         }
 
         async closeLiveAgentSession() {
@@ -3482,8 +3230,12 @@
                     return;
                 }
 
-                this.currentMode = state.currentMode || 'assistant';
-                this.sessions = state.sessions || this.sessions;
+                // Always use assistant mode
+                this.currentMode = 'assistant';
+                // Restore only assistant session
+                if (state.sessions && state.sessions.assistant) {
+                    this.sessions.assistant = state.sessions.assistant;
+                }
 
                 console.log('State loaded from localStorage');
             } catch (error) {

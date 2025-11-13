@@ -1315,15 +1315,7 @@
   animation: slideIn 0.3s ease;
 }
 
-/* Mode-specific styles */
-.mode-liveagent .pax-mode-tab[data-mode="liveagent"] {
-  background: linear-gradient(135deg, #2196f3 0%, #64b5f6 100%);
-}
-
-.mode-liveagent .pax-msg-agent .pax-msg-text {
-  background: rgba(33, 150, 243, 0.2);
-  border-color: rgba(33, 150, 243, 0.3);
-}
+/* Mode-specific styles removed - Live Agent removed */
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -2394,74 +2386,7 @@
 }
 
 
-/* Live Agent glassmorphic presentation */
-#pax-chat.mode-liveagent {
-  background: rgba(12, 18, 36, 0.85);
-  border: 1px solid rgba(98, 149, 255, 0.25);
-  backdrop-filter: blur(14px) saturate(135%);
-  box-shadow: 0 32px 80px rgba(12, 18, 36, 0.55);
-  color: #E8ECF6;
-}
-
-#pax-chat.mode-liveagent .pax-header {
-  background: linear-gradient(135deg, rgba(98, 149, 255, 0.28), rgba(125, 81, 255, 0.22));
-  border-bottom: 1px solid rgba(122, 167, 255, 0.28);
-  color: #E8ECF6;
-  box-shadow: 0 20px 40px rgba(10, 18, 32, 0.45);
-}
-
-#pax-chat.mode-liveagent .pax-title {
-  color: #f8faff;
-  letter-spacing: 0.04em;
-}
-
-#pax-chat.mode-liveagent .pax-sub {
-  color: rgba(168, 199, 255, 0.85);
-}
-
-#pax-chat.mode-liveagent .pax-mode-switcher {
-  background: rgba(9, 15, 29, 0.58);
-  border: 1px solid rgba(122, 167, 255, 0.3);
-  box-shadow: inset 0 0 0 1px rgba(122, 167, 255, 0.12);
-}
-
-#pax-chat.mode-liveagent .pax-mode-tab {
-  color: rgba(206, 220, 255, 0.75);
-}
-
-#pax-chat.mode-liveagent .pax-mode-tab.active {
-  color: #0f172a;
-  background: linear-gradient(135deg, rgba(98, 149, 255, 0.95), rgba(125, 81, 255, 0.9));
-  box-shadow: 0 10px 32px rgba(86, 140, 255, 0.45);
-}
-
-#pax-chat.mode-liveagent .pax-input-area {
-  background: rgba(12, 20, 35, 0.8);
-  border-top: 1px solid rgba(122, 167, 255, 0.25);
-  box-shadow: 0 -18px 36px rgba(10, 18, 32, 0.45);
-}
-
-#pax-chat.mode-liveagent #pax-input {
-  background: rgba(10, 16, 30, 0.68);
-  color: #edf2ff;
-  border: 1px solid rgba(122, 167, 255, 0.28);
-  box-shadow: inset 0 0 0 1px rgba(122, 167, 255, 0.12);
-}
-
-#pax-chat.mode-liveagent #pax-input::placeholder {
-  color: rgba(196, 212, 255, 0.7);
-}
-
-#pax-chat.mode-liveagent #pax-send {
-  background: linear-gradient(135deg, rgba(98, 149, 255, 0.96), rgba(125, 81, 255, 0.9));
-  color: #0f172a;
-  box-shadow: 0 14px 30px rgba(86, 140, 255, 0.5);
-}
-
-#pax-chat.mode-liveagent #pax-send:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 40px rgba(86, 140, 255, 0.6);
-}
+/* Live Agent glassmorphic presentation - REMOVED */
 
 .pax-live-banner {
   display: flex;
@@ -2589,86 +2514,7 @@
   }
 }
 
-.pax-liveagent-onboarding {
-  background: rgba(10, 18, 32, 0.78);
-  border: 1px solid rgba(122, 167, 255, 0.25);
-  border-radius: 20px;
-  padding: 24px;
-  margin: 24px 20px;
-  box-shadow: 0 28px 50px rgba(10, 18, 32, 0.45);
-  backdrop-filter: blur(14px);
-  color: #E8ECF6;
-}
-
-.pax-liveagent-onboarding__inner {
-  display: grid;
-  gap: 18px;
-}
-
-.pax-liveagent-onboarding__content h3 {
-  margin: 0 0 6px;
-  font-weight: 600;
-  letter-spacing: 0.035em;
-}
-
-.pax-liveagent-onboarding__content p {
-  margin: 0;
-  color: rgba(200, 216, 255, 0.78);
-  font-size: 14px;
-}
-
-.pax-liveagent-onboarding__actions {
-  display: grid;
-  gap: 12px;
-}
-
-.pax-liveagent-btn {
-  border-radius: 14px;
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  border: 1px solid transparent;
-  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
-  cursor: pointer;
-}
-
-.pax-liveagent-btn--primary {
-  background: linear-gradient(135deg, rgba(98, 149, 255, 0.95), rgba(125, 81, 255, 0.92));
-  color: #0f172a;
-  box-shadow: 0 14px 32px rgba(86, 140, 255, 0.5);
-}
-
-.pax-liveagent-btn--primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 40px rgba(86, 140, 255, 0.6);
-}
-
-.pax-liveagent-btn--primary.is-loading {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.pax-liveagent-btn--secondary {
-  background: rgba(12, 20, 35, 0.68);
-  color: rgba(232, 236, 246, 0.8);
-  border: 1px solid rgba(122, 167, 255, 0.32);
-}
-
-.pax-liveagent-btn--secondary:hover {
-  background: rgba(16, 26, 44, 0.78);
-  transform: translateY(-1px);
-}
-
-.pax-liveagent-btn--ghost {
-  background: transparent;
-  color: rgba(232, 236, 246, 0.7);
-  border: 1px dashed rgba(122, 167, 255, 0.28);
-}
-
-.pax-liveagent-btn--ghost:hover {
-  border-style: solid;
-  color: rgba(224, 236, 255, 0.9);
-}
+/* Live Agent onboarding styles - REMOVED */
 
 @keyframes paxLivePulse {
   0%, 100% {

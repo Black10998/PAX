@@ -1224,9 +1224,7 @@ if (menuBtn && menu) {
       }
       cooldownInfo.active = secondsTotal > 0;
       cooldownInfo.until = until;
-      if (cooldownInfo.active && !prevActive) {
-        showToast(strings.ticketCooldownNotice || strings.ticketCooldownActive || 'Cooldown active.');
-      }
+      // Cooldown notification removed - no toast shown
       const badge = document.createElement('span');
       badge.className = 'pax-badge';
       badgeContainer.appendChild(badge);
@@ -1589,9 +1587,7 @@ if (menuBtn && menu) {
     if (emailField && user.email && !emailField.value) {
       emailField.value = user.email;
     }
-    if (cooldownInfo.active) {
-      showToast(strings.ticketCooldownActive || strings.ticketCooldownNotice || 'Cooldown active.');
-    }
+    // Cooldown notification removed - no toast shown
     ticketModal.open();
   }
 
@@ -1624,7 +1620,7 @@ if (menuBtn && menu) {
         showToast(strings.ticketSuccess || 'Ticket submitted successfully.');
         updateCooldown();
       } else if (response.status === 429) {
-        showToast((data && data.message) ? data.message : (strings.ticketCooldownActive || 'Cooldown active.'));
+        // Cooldown error - show inside modal or as inline message, not as toast
         updateCooldown();
       } else {
         showToast((strings.ticketError || 'Unable to submit ticket.') + (data && data.message ? ' ' + data.message : ''));
