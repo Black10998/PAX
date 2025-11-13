@@ -1235,13 +1235,9 @@
             console.log('PAX-TOGGLE: Triggered');
             if (!this.chatWindow) return;
             if (this.chatWindow.classList.contains('open')) {
-                console.log('PAX-CLOSE: Closing chat window');
-                this.chatWindow.classList.remove('open');
-                this.isOpen = false;
+                this.closeChat();
             } else {
-                console.log('PAX-OPEN: Opening chat window');
-                this.chatWindow.classList.add('open');
-                this.isOpen = true;
+                this.openChat();
             }
         }
 
@@ -1376,7 +1372,6 @@
 
             // No mode switcher needed - always in assistant mode
             this.modeSwitcher = null;
-            });
         }
 
         setupEventListeners() {
